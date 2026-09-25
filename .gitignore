@@ -1,0 +1,36 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Models and audio are large and/or private — never commit
+models/
+*.onnx
+*.gguf
+*.bin
+*.safetensors
+eval/datasets/**/audio/
+*.wav
+*.flac
+*.mp3
+
+# Eval runs are immutable artifacts, kept outside git
+eval/runs/
+
+target/
+node_modules/
+
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

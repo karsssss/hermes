@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version; git --version; \\(Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion | Format-Table -AutoSize | Out-String\\); \\(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors | Format-Table -AutoSize | Out-String\\); [math]::Round\\(\\(Get-CimInstance Win32_ComputerSystem\\).TotalPhysicalMemory/1GB,1\\))"
+    ]
+  }
+}
