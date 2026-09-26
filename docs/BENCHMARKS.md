@@ -7,7 +7,7 @@ engineering from guessing, and in this domain intuition is actively misleading: 
 that sound better raise WER, LLM correction passes that read beautifully change meaning,
 and "this feels faster" is uncorrelated with p95.
 
-It is also, per `01-strategy.md` §3 (W2), a marketing asset. The harness ships publicly.
+It is also, per `PRODUCT.md` §3 (W2), a marketing asset. The harness ships publicly.
 
 ## 1. Metrics
 
@@ -19,7 +19,7 @@ Plain WER is necessary and badly insufficient for this product.
 | **F-WER** (formatted WER) | WER computed on the *final injected text*, post-ITN, punctuation- and case-sensitive | This is what the user actually sees. It's the number that matters. |
 | **E-WER** (entity WER) | WER restricted to code identifiers, names, and domain terms | Measures W3 directly. A tool that gets `kubectl` wrong is useless to the target user regardless of its overall WER. |
 | **Punctuation F1** | Per-mark precision/recall | Punctuation errors are disproportionately annoying |
-| **Latency p50 / p95 / p99** | Per-stage and end-to-end, hotkey-release → text-on-screen | A feature (`02-architecture.md` §8) |
+| **Latency p50 / p95 / p99** | Per-stage and end-to-end, hotkey-release → text-on-screen | A feature (`ARCHITECTURE.md` §8) |
 | **Keystrokes saved** | `len(final_text) - len(user_corrections)` | The closest proxy to real value. Track it in daily use. |
 | **Correction rate** | Fraction of utterances the user edits within 10 s | The honest retention signal |
 | **Catastrophic rate** | Fraction of utterances with hallucinated content, wrong-window injection, or clipboard loss | Must be ~0. Weight these far above WER. |

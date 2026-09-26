@@ -32,5 +32,8 @@ node_modules/
 
 .vscode/
 .idea/
+
+# Machine-local Claude Code permissions; .claude/settings.json (shared) is tracked
+.claude/settings.local.json
 Thumbs.db
 desktop.ini

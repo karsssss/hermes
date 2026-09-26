@@ -50,7 +50,7 @@ many Electron apps, UI Automation is inconsistent in Chromium, and **UIPI blocks
 into elevated processes entirely** — so dictating into an admin PowerShell or an elevated
 terminal simply doesn't work in competing products. Solving that cascade reliably is
 unglamorous, hard, and exactly the kind of thing a funded consumer company deprioritizes.
-See `02-architecture.md` §6.
+See `ARCHITECTURE.md` §6.
 
 ### W2. Accent and code-switching robustness, measured and published
 This is the largest underserved population in the category and the one you personally
@@ -67,7 +67,7 @@ be the marketing. Benchmarks that a community adopts become a moat that funding 
 Generic dictation cannot spell `useMemo`, `kubectl`, `tokio::sync::mpsc`, or your
 colleague's surname. Hermes can, because it reads context the cloud never sees: the active
 window, the focused field's existing text, the clipboard, and **the identifiers in the git
-repo you currently have open**. This is contextual biasing (§`02-architecture.md` §5.4) and
+repo you currently have open**. This is contextual biasing (§`ARCHITECTURE.md` §5.4) and
 it is only possible *because* we run locally. Privacy isn't just a compliance story here —
 it's what unlocks the accuracy feature.
 
@@ -121,7 +121,7 @@ stop typing?*
 2. **Publish the benchmark before the product.** An accent-stratified ASR benchmark with
    honest numbers for every competitor is a linkable, citable artifact that costs no
    marketing spend and establishes authority. It also forces you to build the evaluation
-   harness, which you need anyway (`05-evaluation.md`).
+   harness, which you need anyway (`BENCHMARKS.md`).
 3. **Ship the OSS core to r/LocalLLaMA, HN, and the Windows dev community.** This audience
    is small, vocal, allergic to cloud, and generates the bug reports that make injection
    reliable.
@@ -133,7 +133,7 @@ stop typing?*
 |---|---|---|
 | OS vendors bundle this for free (Apple, Microsoft, Google all shipping better native dictation) | **Existential** | Be where the OS won't go: cross-app context, project vocabulary, offline enterprise, accents. Bundled features are always generic. |
 | Wispr or a fast-follower ships good Windows local support | High | Speed on the wedge; the benchmark as a defensible brand; OSS community as a cost structure they can't match |
-| Frontier ASR becomes so good and so cheap that accuracy stops being a differentiator | High | Then the product is *injection, context, and UX*, not the model. Architect so the model is swappable (§`02-architecture.md` §5.1) and the value lives in the layers around it. |
+| Frontier ASR becomes so good and so cheap that accuracy stops being a differentiator | High | Then the product is *injection, context, and UX*, not the model. Architect so the model is swappable (§`ARCHITECTURE.md` §5.1) and the value lives in the layers around it. |
 | Local models can't match cloud on hard audio | Medium | Hybrid escalation path, opt-in. Be honest in the UI about which tier ran. |
 | Solo-founder bandwidth vs. a 100-person competitor | High | Scope brutally. Two differentiators, one platform, one audience. |
 | Name collision — "Hermes" is used by Nous Research's LLM series, Meta's JS engine, and a luxury brand | Low but real | Fine as an internal codename. Do a trademark search before any public launch. |
@@ -149,7 +149,7 @@ Be willing to reach this conclusion:
 - If accent-stratified benchmarking shows the gap between local and cloud models on
   accented speech is small, W2 collapses and you need a different second differentiator.
 
-Set these as explicit checkpoints in `03-roadmap.md`, not as vibes.
+Set these as explicit checkpoints in `ROADMAP.md`, not as vibes.
 
 ## Sources
 

@@ -2,7 +2,7 @@
 
 Status: draft, 2026-09-24.
 
-A reading list is not a plan. This is sequenced against `03-roadmap.md`: study each block
+A reading list is not a plan. This is sequenced against `ROADMAP.md`: study each block
 while building the phase that needs it, so the theory has something to attach to. Reading
 all of it before writing code is the most common way this kind of project dies.
 

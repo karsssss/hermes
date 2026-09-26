@@ -22,7 +22,7 @@ Prove the loop exists end to end, at any quality.
       `large-v3-turbo` int8 — easiest to get running, known-good baseline)
 - [ ] Clipboard-paste injector with full clipboard save/restore
 - [ ] Structured per-stage latency logging
-- [ ] **Eval harness v0** (`05-evaluation.md`): WER on a fixed 30-utterance personal set
+- [ ] **Eval harness v0** (`BENCHMARKS.md`): WER on a fixed 30-utterance personal set
 
 **Checkpoint 0:** hotkey → speak → text lands in Notepad. Any latency. Nothing else matters.
 
@@ -49,7 +49,7 @@ The goal is that *you* stop typing. Not that it's shippable.
 2. Measured formatted-WER beats Windows built-in dictation on your voice by a clear margin.
 3. p95 end-to-end latency < 700 ms.
 
-If (1) fails, the product thesis is wrong — stop and re-diagnose. See `01-strategy.md` §8.
+If (1) fails, the product thesis is wrong — stop and re-diagnose. See `PRODUCT.md` §8.
 
 ---
 
@@ -93,7 +93,7 @@ decisions you're about to change.
 - [ ] Signed MSI/MSIX installer, auto-update, crash reporting (content-free)
 - [ ] Cold start < 2 s; idle RAM < 300 MB; idle CPU ≈ 0
 - [ ] Streaming injection with diff-based correction (behind a flag — see
-      `02-architecture.md` §5.3 for why this is risky)
+      `ARCHITECTURE.md` §5.3 for why this is risky)
 - [ ] Elevated helper service for admin terminals, **with an independent security review**
 - [ ] Docs, website, OSS release
 
@@ -134,6 +134,6 @@ Work that can run concurrently without blocking:
 - Eval harness and dataset collection (Phase 0–2) is independent of the app and is the
   highest-leverage thing to start early — everything else is measured against it.
 - The accent benchmark (W2) needs no product code at all; it's pure evaluation work.
-- The curriculum (`04-curriculum.md`) is sequenced to match the phases — study the DSP and
+- The curriculum (`CURRICULUM.md`) is sequenced to match the phases — study the DSP and
   CTC/RNN-T material during Phase 0–1, biasing and LLM-rescoring literature during Phase 2,
   real-time systems and Rust during Phase 3.

@@ -31,12 +31,12 @@ Three bets:
 
 | | |
 |---|---|
-| [`docs/01-strategy.md`](docs/01-strategy.md) | Market, competitors, the wedge, business model, risks |
-| [`docs/02-architecture.md`](docs/02-architecture.md) | The full pipeline: capture → VAD → ASR → NLP → injection |
-| [`docs/03-roadmap.md`](docs/03-roadmap.md) | Phased plan with kill/continue checkpoints |
-| [`docs/04-curriculum.md`](docs/04-curriculum.md) | What to study, sequenced against the phases |
-| [`docs/05-evaluation.md`](docs/05-evaluation.md) | Metrics, datasets, and the benchmark harness |
-| [`docs/decisions/`](docs/decisions/) | Architecture decision records |
+| [`docs/PRODUCT.md`](docs/PRODUCT.md) | Market, competitors, the wedge, business model, risks |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The full pipeline: capture → VAD → ASR → NLP → injection |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phased plan with kill/continue checkpoints |
+| [`docs/CURRICULUM.md`](docs/CURRICULUM.md) | What to study, sequenced against the phases |
+| [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md) | Metrics, datasets, and the benchmark harness |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Architectural decisions and why they were made |
 
 ## The pipeline, in one paragraph
 
@@ -61,4 +61,4 @@ that's roughly the low end of what a target user has.
 ## License
 
 Planned: Apache-2.0 for the evaluation harness and benchmark, AGPL for the engine. Not yet
-applied — see `docs/01-strategy.md` §5.
+applied — see `docs/PRODUCT.md` §5.

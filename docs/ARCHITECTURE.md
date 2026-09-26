@@ -2,7 +2,7 @@
 
 Status: draft, 2026-09-24.
 
-This describes the target system. `03-roadmap.md` says which parts get built when.
+This describes the target system. `ROADMAP.md` says which parts get built when.
 Nothing here is built yet.
 
 ## 0. Design principles
@@ -17,7 +17,7 @@ Nothing here is built yet.
 4. **Never corrupt the user's state.** Wrong text is recoverable; a clobbered clipboard, a
    keystroke sent to the wrong window, or text injected into a password field is not.
 5. **Correctness is measured, not asserted.** No pipeline change merges without a WER /
-   latency delta from the eval harness (`05-evaluation.md`).
+   latency delta from the eval harness (`BENCHMARKS.md`).
 6. **Local by default, cloud by consent, and the UI always says which ran.**
 
 ## 1. Target hardware
@@ -79,7 +79,7 @@ tolerate that per-utterance). The daemon holds all state; the UI is a thin clien
 - **Inference thread(s)** — owns model handles, pulls from the ring buffer.
 - **Orchestrator** — async, owns the state machine, IPC, context harvesting, injection.
 
-This split is why the Rust port matters (ADR-0003): Python's GIL plus GC makes a genuinely
+This split is why the Rust port matters (D-0003): Python's GIL plus GC makes a genuinely
 real-time audio thread awkward. For the Phase 0/1 prototype, `sounddevice`'s C callback
 with a `numpy` ring buffer is good enough to validate the pipeline.
 
