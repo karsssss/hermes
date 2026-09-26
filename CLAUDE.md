@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Hermes is a local-first Windows dictation service. **The repository currently contains only
-planning documents — no code exists yet.** Start from `docs/ROADMAP.md` Phase 0.
+Hermes is a local-first Windows dictation service. **Phase 0 is under way.** The only code
+in the repository is the evaluation harness (`src/hermes_eval/`, `eval/`) — no ASR, no
+audio capture, no Rust yet. Read `docs/CURRENT.md` for where things stand.
 
 Read `docs/SYNTHESIS.md` first — it is the current decision document (R1–R9 synthesized,
 Phase 1 scope, proposed contracts, deferred decisions) and it corrects several claims in
@@ -13,10 +14,21 @@ Phase 1 scope, proposed contracts, deferred decisions) and it corrects several c
 
 ## Commands
 
-No build system yet. When Phase 0 starts, the stack is Python 3.11 managed by `uv`
-(not yet installed on this machine), with ruff, pyright, and pytest.
+Python 3.11 managed by `uv` (installed at `~/.local/bin`), with ruff, pyright and pytest.
 
-Update this section as soon as `pyproject.toml` exists.
+```
+uv sync --group dev          # create/refresh .venv
+uv run pytest                # tests
+uv run ruff check . ; uv run ruff format --check .
+uv run pyright
+
+uv run hermes-eval validate eval/datasets/mock/manifest.jsonl
+uv run hermes-eval run --manifest <manifest> --adapter perturb:seed=1 --label <name>
+uv run hermes-eval compare <baseline-run-dir> <candidate-run-dir> --latency-budget-ms 700
+```
+
+`eval/README.md` documents the harness: metric definitions, the decision rule, the adapter
+seam, and what is deliberately not in v0.
 
 ## Architecture constraints that are easy to violate
 

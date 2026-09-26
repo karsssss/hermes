@@ -11,10 +11,22 @@ centrally into `docs/SYNTHESIS.md`, which is now the current decision document. 
 decisions (D-0007…D-0011) were recorded, and six corrections were applied to
 `ARCHITECTURE.md`, `BENCHMARKS.md` and `CLAUDE.md`.
 
-**The next thing to do is write code — Phase 0.** There is no research left that is worth
-doing before measuring something on the actual machine.
+**Phase 0 has started. The evaluation harness exists and passes its own tests.**
+`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 88 tests,
+ruff and pyright clean. Zero runtime dependencies — the scoring path is pure stdlib on
+purpose, because a published benchmark cannot blame its numbers on a third-party WER
+package.
 
-Repository is still **documentation only — zero lines of code.**
+What the harness does today: strict manifest validation, per-utterance and corpus WER,
+F-WER with the full decomposition (casing error rate, per-class punctuation F1, ITN slot
+error rate), E-WER over annotated entity spans, latency percentiles, subset metrics on
+every metadata axis, a seeded paired utterance-level bootstrap, the decision rule from
+`BENCHMARKS.md` §1.2 encoded in code, and immutable run directories carrying full
+provenance. Two adapters: `perturb` (deterministic synthetic fake-ASR, for fixtures) and
+`replay` (scores transcripts captured by hand — this is how closed competitors get
+measured). See `eval/README.md`.
+
+**No ASR model, no audio capture, no Rust.** That is deliberate and unchanged.
 
 ## Read order for a fresh session
 
@@ -50,20 +62,57 @@ RAM. **None of it transfers.** The only laptop-class figures found anywhere are 
 on an RTX 5060 8 GB (235 ms median per 2 s chunk, 0.6B) and LocalScore's RTX 4050 llama.cpp
 submissions (Llama-3.2-1B Q4_K_M: 301 ms TTFT).
 
-Toolchain: Python 3.11.14, Node 24.14, git 2.53. **Missing: `uv`, `rustup`.** `uv` is needed
-now; `rustup` is a Phase 1 prerequisite (D-0006), not Phase 0.
+Toolchain: Python 3.11.14, Node 24.14, git 2.53, **`uv` 0.12.19** (installed 2026-09-26 to
+`~/.local/bin`). **Missing: `rustup`** — a Phase 1 prerequisite (D-0006), not Phase 0.
 
 ## Next steps — Phase 0
 
 Phase 0 is a **throwaway Python spike, ~1 week** (D-0006). Its purpose is no longer vague:
 it exists to settle a specific measurement list that every research memo deferred to it.
 
-**Task 1 — eval harness v0 and the personal eval set.** Needs no model and no Rust. Record
-~30 utterances in real use with corrected ground truth; build the per-utterance WER path,
-the F-WER decomposition, and the paired bootstrap with a fixed seed. Everything else is
-measured against this, so it is the highest-leverage thing in the project.
+### THE NEXT TASK — record the personal eval set (Task 1b)
 
-**Task 2 — the measurement list.** In rough priority order:
+The harness half of Task 1 is done. The data half is not, and **nothing else in Phase 0
+can be believed until it exists**, because every measurement below is scored against it.
+
+Concretely:
+
+1. Record **30 utterances** during real use, 16 kHz mono 16-bit WAV, one file per
+   utterance, into `eval/datasets/personal/audio/`.
+2. Follow `eval/datasets/personal/RECORDING.md` — it has the coverage split (8 dev_speak,
+   6 prose, 6 code_switch, 5 itn, 5 adversarial) and the **transcribe-twice-and-reconcile**
+   discipline, which is not optional.
+3. Annotate `entities` and `itn_slots` as you go. E-WER is only as good as that
+   annotation, and E-WER is the guard that stops an aggregate win from hiding rare-word
+   damage.
+4. Start from `manifest.template.jsonl`; run
+   `uv run hermes-eval validate eval/datasets/personal/manifest.jsonl` until it is clean.
+5. Sanity-check the harness against the real set with
+   `uv run hermes-eval run --manifest eval/datasets/personal/manifest.jsonl --adapter perturb:seed=1`
+   — the numbers are meaningless, but a real manifest exercising the real code path is not.
+
+This is a recording session, not a coding session. It needs a human with a microphone.
+
+### Deferred out of the harness, deliberately
+
+- **UPWR/UPSR** (partial-hypothesis stability, arXiv 2006.01416). Needs a backend that
+  emits partial hypotheses; there is nothing to measure until one exists.
+- **The vendored, version-pinned Whisper `EnglishTextNormalizer`** for the secondary
+  legacy-comparable score. Needs a pinned third-party source; it is a secondary number,
+  never the headline.
+- **Resource sampling** (`nvidia-smi`, `Get-Counter` per R6). Lands with the first real
+  model, along with the cold-vs-warm-start discipline.
+- A **CI canary manifest and checked-in baselines**. Premature while the only dataset is
+  synthetic — `hermes-eval compare` already exits non-zero on a regression, so the gate
+  itself is ready.
+
+One harness detail worth remembering: WER can come out *above* F-WER on the same run,
+because `basic` normalization splits `kube-system` into two tokens while `raw` keeps it as
+one. Different denominators, not a bug.
+
+**Task 2 — the measurement list.** Every one of these is scored through
+`hermes-eval`; none of them is worth running before Task 1b exists. In rough priority
+order:
 
 1. **Can per-token logits be reached from an ONNX export?** (`SYNTHESIS.md` §5.1.) This is an
    explicit Phase 0 exit criterion. If no, Phase 1 scope changes materially — we would have to
@@ -132,7 +181,10 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 ## Standing instructions
 
 - **Commit only on request.** `docs/research/`, `docs/SYNTHESIS.md` are untracked or modified
-  but on disk.
+  but on disk; so is the whole Phase 0 harness (`pyproject.toml`, `src/`, `tests/`, `eval/`)
+  as of 2026-09-26.
+- `eval/runs/` is gitignored. Promote a run deliberately with `git add -f` when it belongs
+  in the record; baselines change only by an explicit reviewed edit, never silently.
 - No pipeline change lands without an eval delta. F-WER is the headline; latency p95 is a
   hard gate.
 - Deltas smaller than the bootstrap CI are noise, not wins.
