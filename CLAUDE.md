@@ -7,8 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Hermes is a local-first Windows dictation service. **The repository currently contains only
 planning documents — no code exists yet.** Start from `docs/ROADMAP.md` Phase 0.
 
-Read `docs/ARCHITECTURE.md` before writing any pipeline code; it specifies component
-boundaries that later phases depend on.
+Read `docs/SYNTHESIS.md` first — it is the current decision document (R1–R9 synthesized,
+Phase 1 scope, proposed contracts, deferred decisions) and it corrects several claims in
+`ARCHITECTURE.md`. Then read `docs/ARCHITECTURE.md` for the target design.
 
 ## Commands
 
@@ -34,11 +35,19 @@ seems necessary, add an entry to `docs/DECISIONS.md`.
   UI states which tier ran, per utterance.
 - **The LLM correction pass selects among candidates; it never freely rewrites.** Every
   correction passes an edit-distance validator before acceptance, and falls back silently
-  to the unedited transcript on rejection. See `docs/ARCHITECTURE.md` §5.5.
-- **Injection is verified, not fire-and-forget.** Read back via UIA, fall back down the
-  cascade, persist the winning strategy per process. Always restore the clipboard in a
-  `finally`. Never inject if focus changed since activation, into a password field, or into
-  a blocklisted process.
+  to the unedited transcript on rejection. See `docs/ARCHITECTURE.md` §5.5. **It does not
+  ship in Phase 1** (D-0009): measured TTFT on our GPU exceeds the entire correction budget
+  before a single token is generated, and the confidence signal that would gate it is
+  uncalibrated. Phase 1 ships confidence-based highlighting only.
+- **Injection checks preconditions, not postconditions.** R2 established that injection
+  success is *not verifiable in general* — UIA read-back is slow, stale in Chromium/Electron,
+  and UIPI-blocked for elevated targets. So: verify before (focus stable since activation,
+  integrity level <= ours, `IsEnabled && IsKeyboardFocusable`, not a password field, not
+  blocklisted), make every insert atomic and Ctrl+Z-undoable, keep the text in our own history
+  so a silent failure is recoverable, and **never report success we did not observe**. Fall
+  back down the cascade and persist the winning strategy per process. Always restore the
+  clipboard in a `finally`, and register the clipboard privacy formats or Windows Clipboard
+  History captures every utterance.
 
 ## Working norms for this repo
 

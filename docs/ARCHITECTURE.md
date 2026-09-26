@@ -5,6 +5,11 @@ Status: draft, 2026-09-24.
 This describes the target system. `ROADMAP.md` says which parts get built when.
 Nothing here is built yet.
 
+> **`SYNTHESIS.md` (2026-09-26) supersedes this document where they disagree.** It corrects
+> §1 (VRAM budget), §5.3 (stability metric), §5.5 (PAC citation; correction pass deferred out
+> of Phase 1), §5.6 (ITN is a rule cascade, not WFST/Pynini), and §6.1 (injection is
+> precondition-checked, not read-back-verified). Read it first.
+
 ## 0. Design principles
 
 1. **The model is a replaceable part.** SOTA ASR turns over every ~6 months. Every model
@@ -32,8 +37,13 @@ a target user has, so designing within it keeps the product broadly deployable. 
 | Silero VAD | ~0 (CPU) | ~1 MB ONNX, runs on CPU in <1 ms/chunk |
 | Parakeet TDT 0.6B v3 | ~0.8 GB | Streaming draft + final pass |
 | Whisper large-v3-turbo (CT2 int8) | ~1.5 GB | Accuracy tier, 99 languages |
-| Correction LLM (Qwen3-4B int4) | ~2.5 GB | Only loaded when correction is enabled |
+| Correction LLM (Qwen3-4B int4) | ~2.5 GB | **Not in Phase 1** — see §5.5 and D-0009 |
 | **Total worst case** | **~4.8 GB** | Fits, barely. Anything larger goes cloud. |
+
+**Revised Phase 1 budget (`SYNTHESIS.md` §11): ~0.7 GB** — Silero VAD on CPU plus one
+streaming ASR model. The 4.8 GB figure was driven by a correction LLM that no longer ships in
+Phase 1. The headroom is real but must be *earned* by measurement, not filled because it
+is free.
 
 A CPU-only path must also work (Moonshine v2 / Parakeet ONNX int8 hit RTFx > 6 on CPU),
 because a large share of Windows laptops have no usable discrete GPU. Treat CPU-only as a
@@ -71,6 +81,17 @@ first-class configuration, not a degraded fallback.
 **Why two processes:** the UI must be able to crash, restart, or be updated without
 dropping the audio thread or the loaded models (model load is seconds; users will not
 tolerate that per-utterance). The daemon holds all state; the UI is a thin client.
+
+**Phasing (R5, and the single most important structural discipline here):** Phase 1 ships
+*Tauri-as-daemon* — one process to build, sign, install and version — **but the Rust core
+(audio, ring buffer, orchestrator, injection, IPC client) is written as a UI-agnostic library
+crate from day one**, with `main()` in the Tauri binary doing nothing but calling into it. The
+later extraction of a separate slim daemon is then mechanical rather than a rewrite.
+
+**The Rust/Python process boundary is also the safety boundary** (`SYNTHESIS.md` §1, §10): the
+inference sidecar can only emit serialized values across a socket, so it structurally cannot
+execute anything. Preserve that separation when the sidecar is later replaced by in-process
+Rust inference — at that point it stops being enforced by the OS.
 
 **Threading inside `hermesd`:**
 
@@ -180,6 +201,16 @@ Emit a fast draft so words appear while the user speaks, then replace it with a
 better-informed final transcript on release. The final pass sees the whole utterance
 (right context), the full bias list, and can afford a heavier model.
 
+**Stability metric: UPWR / UPSR** (Shangguan et al., arXiv 2006.01416) — Unstable Partial
+Word Ratio and Unstable Partial Segment Ratio. Adopt these rather than inventing a "flicker
+rate"; they are the peer-reviewed formalisms and they belong in `BENCHMARKS.md`.
+
+**Beam-search biasing breaks the monotonic-prefix property.** Quoting sherpa-onnx PR #3895:
+*"The best path can revise earlier text between chunks (inherent to beam) — greedy's
+monotonic-prefix property does not hold."* The HUD must therefore tolerate already-displayed
+text being rewritten, and the partial-hypothesis contract must carry an explicit stable-prefix
+length. This is a design constraint, not a detail.
+
 The catch: if the draft was already *injected* into the target app, the final pass must
 express itself as a **diff** and apply it as backspaces + retype — and it must abort if
 focus changed in the meantime. This is genuinely risky and belongs in Phase 3, not Phase 1.
@@ -234,16 +265,41 @@ the easiest place in the whole system to make things worse. An unconstrained LLM
    token count beyond a tolerance. On rejection, keep the original. Silent fallback to the
    unedited transcript is always the safe move.
 
-Local model: Qwen3-4B-Instruct int4 (~2.5 GB) fits alongside Parakeet on the 4050. On CPU
-or low-VRAM machines, drop to a 1.7B or disable the pass. **Measure the WER delta**: if the
-correction pass doesn't reduce formatted-WER on the eval set, it is net harm, and shipping
-it because it's impressive-sounding is how products get worse.
+**Phase 1 ships none of this (D-0009, `SYNTHESIS.md` §9).** Two independent findings, either
+sufficient alone:
+
+1. **It does not fit the latency budget on this hardware, at any model size.** Measured on our
+   exact GPU class (RTX 4050 Laptop 6 GB, LocalScore): Llama-3.2-1B Q4_K_M has **301 ms
+   time-to-first-token**; Gemma-3-4B has 1.28 s. The correction budget is 150 ms p95. TTFT
+   alone exceeds it before one output token exists, and TTFT is prefill-bound — shortening the
+   output does not help.
+2. **The confidence signal that would gate it is uncalibrated.** NeMo computes token confidence
+   (entropy beats max-prob by 2–4x at detecting wrong words on Conformer-RNNT), but nothing
+   claims calibration, no trained confidence head ships, and none of it was measured on
+   accented or code-switched speech — our actual user.
+
+What Phase 1 *does* ship: entropy-based word confidence in `AsrResult`, and **visual
+highlighting of low-confidence spans**. Highlighting needs only relative discrimination, which
+is exactly what the evidence supports. Any LLM call is deferred to an async, user-requested
+path at the earliest.
+
+**Citation correction:** earlier drafts cited **PAC (arXiv 2509.12647)** as the basis for this
+design. PAC is an audio-in LLM-ASR *model* with G2P-interleaved training, not a text-only
+post-hoc corrector; it is not evidence about correcting a separate ASR's output. The
+phoneme-interleaving idea remains reusable for phonetic candidate generation. The design is
+instead supported by Apple's specialized-corrector result (arXiv 2405.15216), LCAR's
+constrained reranking, and RLLM-CF.
+
+Local model, if and when it ships: Qwen3-1.7B (Apache-2.0, 1.28 GB Q4_K_M) or Qwen3-4B int4.
+**Measure the F-WER delta**: if the correction pass doesn't reduce formatted-WER on the eval
+set, it is net harm, and shipping it because it's impressive-sounding is how products get
+worse. The pass remains explicitly on probation.
 
 ### 5.6 The rest of the NLP layer
 
 | Component | Approach | Notes |
 |---|---|---|
-| **ITN** (inverse text normalization) | WFST/Pynini grammars (NeMo-style), per-language | "twenty twenty six" → "2026", "three p m" → "3 PM". Deterministic and debuggable — do not delegate this to an LLM. |
+| **ITN** (inverse text normalization) | **Hand-written rule cascade** (tagger→verbalizer shape, no Pynini) | "twenty twenty six" → "2026", "three p m" → "3 PM". Deterministic and debuggable — do not delegate this to an LLM. **Pynini/OpenFst is ruled out at runtime** (R7): no first-party Windows wheel, no first-party MSVC build; the only working paths are conda-forge, WSL, or third-party rebuilds, none acceptable under a signed installer. `rustfst` is the engine if a native WFST is ever wanted. **Aggressiveness is gated per-application** — "dash dash interactive" → `--interactive` is right in a terminal and wrong in Slack. That gating is our own invention and ships with its own eval, not as a known-good pattern. |
 | **Punctuation + truecasing** | Native from Parakeet TDT v3; small BERT-class fallback | |
 | **Disfluency removal** | Toggleable, conservative | Removing "um" is safe; removing false starts changes meaning. Off in code mode. |
 | **Command vs. dictation** | Grammar + small intent classifier | "new paragraph", "scratch that", "select last sentence". Needs a literal-escape ("literally new paragraph"). |
@@ -272,17 +328,51 @@ The single hardest engineering problem in the product, and where competitors vis
 | 2 | **Clipboard + Ctrl+V** | Broadest compatibility, fast for long text | Clobbers the clipboard; some apps read it asynchronously, creating a race; paste is intercepted in some terminals |
 | 3 | **`SendInput` + `KEYEVENTF_UNICODE`** | Works where paste is intercepted; no clipboard side effects | Slow for long text; drops characters under load; broken in some games and terminals |
 
-Choose per app, **verify, and remember**: attempt the preferred strategy, read back via UIA
-to confirm the text landed, fall back on failure, and persist the winning strategy for that
-process name. Over a few days this converges to a per-machine compatibility table that's
-better than anything shipped in the box.
+**Correction (R2): injection success is not verifiable in general.** Every read-back method
+fails somewhere that matters — `ValuePattern` readback exists only where failure was least
+likely; `TextPattern.GetText` is cross-process COM costing tens to hundreds of milliseconds and
+is frequently stale in Chromium/Electron; `WM_GETTEXT` is Win32-only and UIPI-blocked;
+clipboard comparison proves only that *we* set the clipboard. UIA `TextChanged` is the best
+available signal but is advisory and not universally raised.
+
+**Check preconditions, not postconditions:**
+
+1. Before injecting: foreground HWND stable since activation, target integrity level <= ours,
+   focused element `IsEnabled && IsKeyboardFocusable`, not a password field, not blocklisted.
+2. Every injection is **idempotent and undoable** — one utterance is one atomic insert the user
+   can Ctrl+Z.
+3. Recognized text stays in our own history UI, so a silent failure is recoverable.
+4. **Never report success we did not observe.** Detecting "target is elevated and I am not"
+   *before* injecting, and saying so, beats a silent drop.
+
+Choose per app and **remember**: attempt the preferred strategy, fall back on precondition
+failure or exception, and persist the winning strategy for that process name. Over a few days
+this converges to a per-machine compatibility table that's better than anything shipped in the
+box.
+
+**Revised role for UIA: inspection, not insertion.** `SetValue` replaces the entire control's
+contents, but dictation needs insertion at the caret; read-splice-write is racy, destroys undo
+history, and breaks IME composition. Use UIA to identify the focused element and decide a
+strategy, not to write text.
 
 ### 6.2 Clipboard hygiene
 
-If clipboard-paste is used: snapshot **all** formats (not just text), write ours with a
-custom marker format, paste, wait for the app to consume it, restore. Losing a user's
-copied image or rich text to a dictation tool is a uninstall-grade bug. Add a bounded
-retry and always restore in a `finally`.
+If clipboard-paste is used: snapshot, write ours with a custom marker format, paste, wait for
+the app to consume it, restore. Losing a user's copied image or rich text to a dictation tool is
+an uninstall-grade bug. Add a bounded retry and always restore in a `finally`.
+
+**Full snapshot/restore is not achievable** (R2). Delayed rendering means enumerating formats
+forces a synchronous `WM_RENDERFORMAT` in the owner process — a hung owner hangs *us*, and a
+4-byte promise can materialize as a 200 MB DIB. `CF_OWNERDISPLAY` has no snapshottable payload.
+Restoring makes us the owner, and `EmptyClipboard` notifies the original owner, which may free
+what we are restoring. `OpenClipboard` is a single global lock, so **retry with backoff is
+mandatory**. Practical rule: snapshot only `CF_UNICODETEXT`, `CF_HDROP`, `CF_DIB`/`CF_DIBV5`
+and registered HTML/RTF; accept lossiness elsewhere and document it.
+
+**Privacy requirement, not an optimization:** register
+`ExcludeClipboardContentFromMonitorProcessing`, `CanIncludeInClipboardHistory` (0) and
+`CanUploadToCloudClipboard` (0), or Windows Clipboard History and Cloud Clipboard capture every
+dictated utterance.
 
 ### 6.3 Never inject into the wrong place
 
