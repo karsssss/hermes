@@ -57,6 +57,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             dataset_name=args.dataset,
             require_audio=not args.no_require_audio,
             manual_steps=args.manual_step or (),
+            sample_resources=args.resources,
         )
     except ManifestValidationError as exc:
         print(str(exc), file=sys.stderr)
@@ -144,6 +145,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--dataset", default="", help="dataset name for the run record")
     p_run.add_argument("--seed", type=int, default=DEFAULT_SEED, help="bootstrap seed to record")
     p_run.add_argument("--no-require-audio", action="store_true")
+    p_run.add_argument(
+        "--resources",
+        action="store_true",
+        help="sample this process' peak memory and GPU use during the run",
+    )
     p_run.add_argument(
         "--manual-step",
         action="append",

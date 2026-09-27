@@ -210,7 +210,10 @@ class PerturbAdapter:
 
 
 def build_adapter(spec: str, root: Path) -> ASRAdapter:
-    """Parse an adapter spec: `perturb:seed=7,error_rate=0.05` or `replay:path/to.jsonl`."""
+    """Parse an adapter spec.
+
+    `perturb:seed=7,error_rate=0.05` | `replay:path/to.jsonl` | `sherpa:<candidate-key>`
+    """
     kind, _, rest = spec.partition(":")
     kind = kind.strip()
     if kind == "perturb":
@@ -224,4 +227,12 @@ def build_adapter(spec: str, root: Path) -> ASRAdapter:
             raise ValueError("replay adapter needs a path: replay:<file.jsonl>")
         path = Path(rest)
         return ReplayAdapter(path if path.is_absolute() else root / path)
-    raise ValueError(f"unknown adapter spec {spec!r} (expected perturb:... or replay:...)")
+    if kind == "sherpa":
+        # Imported lazily: real backends need the optional `asr` dependency group, and
+        # `hermes-eval validate` / `compare` must keep working on a bare stdlib install.
+        from .asr_sherpa import build as build_sherpa
+
+        return build_sherpa(rest, root)
+    raise ValueError(
+        f"unknown adapter spec {spec!r} (expected perturb:..., replay:... or sherpa:...)"
+    )

@@ -36,6 +36,7 @@ from .metrics import Counts, UtteranceScore, aggregate, score_utterance, subset_
 from .normalize import NORMALIZER_VERSION
 from .provenance import git_state, hardware, run_id, software, utc_now
 from .report import comparison_markdown, summary_csv, summary_markdown
+from .resources import ResourceSampler
 
 
 @dataclass
@@ -70,15 +71,16 @@ def execute(
     require_audio: bool = True,
     manual_steps: Sequence[str] = (),
     adapter: ASRAdapter | None = None,
+    sample_resources: bool = False,
 ) -> RunArtifacts:
     manifest = load_strict(manifest_path, require_audio=require_audio)
     engine = adapter if adapter is not None else build_adapter(adapter_spec, repo_root)
-    env = engine.describe_env()
+    # Called once up front so a misconfigured adapter fails before any decoding; the
+    # authoritative copy is re-read after the loop, below.
+    engine.describe_env()
     warnings: list[str] = []
 
-    missing = missing_env_keys(env)
-    if missing:
-        warnings.append("incomplete provenance from the adapter: " + ", ".join(missing))
+    sampler = ResourceSampler().start() if sample_resources else None
 
     scores: list[UtteranceScore] = []
     predictions: list[dict[str, Any]] = []
@@ -100,8 +102,21 @@ def execute(
                 "latency_ms": round(latency, 2),
                 "latency_source": latency_source,
                 "low_confidence_timing": hypothesis.low_confidence_timing,
+                # Whatever the backend chose to report — per-utterance RTF and audio
+                # duration for the real adapters. Kept raw; the harness does not interpret it.
+                "extra": dict(hypothesis.extra),
             }
         )
+
+    resources = sampler.stop() if sampler is not None else None
+
+    # Re-read the adapter environment after the loop. A real backend only knows its
+    # corpus RTF, decode total and empty-output count once it has decoded something, and a
+    # provenance block captured before the first utterance would omit exactly that.
+    env = engine.describe_env()
+    missing = missing_env_keys(env)
+    if missing:
+        warnings.append("incomplete provenance from the adapter: " + ", ".join(missing))
 
     metrics = aggregate(scores)
     unmatched = sorted({e for s in scores for e in s.unmatched_entities})
@@ -138,6 +153,7 @@ def execute(
             "casing_mode": "casefold",
         },
         "bootstrap_seed": seed,
+        "resources": resources,
         "metrics": metrics,
         "subsets": subset_metrics(scores),
         "warnings": warnings,

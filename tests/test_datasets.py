@@ -241,3 +241,49 @@ def test_sources_declare_whether_they_publish_speakers() -> None:
             assert resolved, f"{key} claims speaker identity but resolves none"
         else:
             assert resolved is None, f"{key} claims no speaker identity but resolved one"
+
+
+# ------------------------------------------------------------------------ resources
+
+
+def test_process_memory_returns_real_numbers() -> None:
+    # Regression test for a ctypes signature bug: without an explicit restype,
+    # GetCurrentProcess()'s 64-bit pseudo-handle came back as C int -1, GetProcessMemoryInfo
+    # silently returned 0, and every peak-memory figure in a run record was null.
+    import sys
+
+    from hermes_eval.resources import process_memory
+
+    mem = process_memory()
+    assert set(mem) == {"working_set_mb", "peak_working_set_mb", "private_mb"}
+    if sys.platform != "win32":
+        return
+    working = mem["working_set_mb"]
+    peak = mem["peak_working_set_mb"]
+    assert isinstance(working, float) and working > 1.0
+    assert isinstance(peak, float) and peak >= working
+
+
+def test_resource_sampler_tracks_a_peak() -> None:
+    import sys
+
+    from hermes_eval.resources import ResourceSampler
+
+    sampler = ResourceSampler(interval_s=0.02, poll_gpu=False).start()
+    ballast = bytearray(200 * 1024 * 1024)
+    ballast[::4096] = b"\x01" * (len(ballast) // 4096)
+    summary = sampler.stop()
+    del ballast
+    assert summary["samples"] >= 1
+    if sys.platform == "win32":
+        peak = summary["peak_working_set_mb"]
+        assert isinstance(peak, float) and peak > 100.0
+
+
+def test_gpu_memory_is_null_rather_than_zero_when_unattributable() -> None:
+    # "the model used 0 MB of VRAM" and "we could not see whether it did" are different
+    # claims, and a screening report must not conflate them.
+    from hermes_eval.resources import gpu_memory_mb
+
+    value = gpu_memory_mb(pid=2_000_000_000)
+    assert value is None
