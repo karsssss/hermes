@@ -406,6 +406,14 @@ is misleading; actual terms are non-commercial and bind for-profit employers). C
 moved to Mozilla Data Collective with unverified terms. TED-LIUM, CHiME and Earnings licences
 are unconfirmed and block publication until checked.
 
+> **Superseded 2026-09-27** by the licence verification behind D-0012. Common Voice is still
+> CC0 but is obtainable only through Mozilla Data Collective behind an account and a terms
+> acceptance, so it is excluded on *access*, not licence. Golos' licence PDF was read in full:
+> a CC BY-SA 4.0 reword with attribution plus ShareAlike and **no non-commercial clause**.
+> Earnings-22's `LICENSE.md` covers transcripts only and the audio licence is unstated, so it
+> is rejected. TED-LIUM 3 is CC BY-NC-ND. Full table:
+> `eval/datasets/public-proxy-v1/LICENSES.md`.
+
 ## 14. Licensing constraints, consolidated
 
 | Item | Licence | Status |
@@ -425,7 +433,13 @@ are unconfirmed and block publication until checked.
 | SenseVoiceSmall | Custom proprietary | Verify before any commercial use |
 | **CUDA / cuDNN** | cuDNN redistributability unconfirmed | **Blocks CUDA-in-installer pending legal read** |
 | GigaSpeech | Non-commercial in practice | Unusable |
-| EdAcc | CC BY-SA 4.0 | Verified, usable |
+| EdAcc | CC BY-SA 4.0 | Verified, usable — **ShareAlike: do not redistribute derived audio** |
+| Golos (crowd + farfield) | Golos Public License (CC BY-SA 4.0 reword) | **Verified 2026-09-27** — commercial OK, ShareAlike, no speaker IDs |
+| LibriSpeech, RuLS | CC BY 4.0 / public domain | Verified, usable |
+| OpenSLR 28 RIRs, MUSAN | Apache-2.0 / CC BY 4.0 | Verified, usable |
+| Common Voice | CC0 | Licence fine; **access-gated** via Mozilla Data Collective since Oct 2025 |
+| Earnings-22 | Transcripts CC BY-SA 4.0; **audio unstated** | Rejected |
+| CS-FLEURS | CC BY-NC 4.0 | Rejected; ru/uk pairs are TTS anyway |
 
 Three of these — ctags, espeak-ng, cuDNN — are the ones that could actually bite, because each
 is easy to adopt casually and expensive to remove later.
@@ -442,8 +456,13 @@ is easy to adopt casually and expensive to remove later.
 5. **uiAccess through Tauri's bundler is unverified.** `embed-manifest` 1.5.1 is the candidate;
    treat as a half-day spike.
 6. **Process-boundary latency inside a 700 ms p95 budget is unmeasured.**
-7. **No Slavic-English code-switching corpus exists.** We collect our own or W2 has a hole.
-8. **Dataset licence blockers** could gut the published benchmark.
+7. **No Slavic-English code-switching corpus exists.** Re-verified 2026-09-27: CS-FLEURS'
+   `cs_rus_eng`/`cs_ukr_eng` are concatenative TTS and CC BY-NC. We collect our own or W2 has
+   a hole.
+8. ~~**Dataset licence blockers** could gut the published benchmark.~~ **Largely closed** by
+   D-0012's verification. What remains is not a licence problem but a *reference* problem: no
+   permissively-licensed public corpus ships a formatted reference, so F-WER — the headline —
+   cannot be published from public data alone.
 9. **Device hot-swap in cpal is not turnkey** — no stream auto-migration, no ergonomic
    `IMMNotificationClient`. Budget real time.
 10. **`ort` has been pre-1.0 for years.** Pin exactly; expect breaking changes.

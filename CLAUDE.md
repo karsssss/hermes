@@ -25,10 +25,20 @@ uv run pyright
 uv run hermes-eval validate eval/datasets/mock/manifest.jsonl
 uv run hermes-eval run --manifest <manifest> --adapter perturb:seed=1 --label <name>
 uv run hermes-eval compare <baseline-run-dir> <candidate-run-dir> --latency-budget-ms 700
+
+uv sync --group data     # only for the line below; the scoring path stays stdlib-only
+uv run hermes-eval build-dataset eval/datasets/public-proxy-v1/spec.json     --out eval/datasets/public-proxy-v1
 ```
 
 `eval/README.md` documents the harness: metric definitions, the decision rule, the adapter
 seam, and what is deliberately not in v0.
+
+**On the public proxy set (`eval/datasets/public-proxy-v1/`): F-WER and E-WER are not
+computable on it** — no public corpus in scope ships a formatted reference or entity
+annotations. Read WER. Never publish a number from it as F-WER. Its README says this first
+for a reason; `COVERAGE.md` lists everything it cannot measure. **Never commit third-party
+audio** — EdAcc and Golos both carry ShareAlike, so the set ships as a manifest plus a
+fetcher.
 
 ## Architecture constraints that are easy to violate
 

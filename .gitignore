@@ -20,6 +20,7 @@ models/
 *.bin
 *.safetensors
 eval/datasets/**/audio/
+eval/datasets/**/.cache/
 *.wav
 *.flac
 *.mp3

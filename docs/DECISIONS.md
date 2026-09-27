@@ -350,3 +350,59 @@ logits by construction and is where biasing must live anyway, but is a substanti
 for a developer with no Rust experience. **Phase 0 carries this as an explicit exit criterion:
 verify per-token logits are reachable from the exported artifact.** A backend that cannot
 supply confidences and N-best is not a valid backend under this architecture.
+
+---
+
+## D-0012 — A public proxy evaluation set stands in for the personal set, and never replaces it
+
+**Status:** accepted · 2026-09-26
+
+**Context.** Task 1b of Phase 0 was to record 30 personal utterances. That needs a human with
+a microphone and cannot happen now, and `CURRENT.md` is explicit that nothing else in Phase 0
+can be believed until *some* scored data exists. The alternative to waiting is a set built from
+public corpora — which is also, per `PRODUCT.md` §3 (W2), what the published benchmark will
+eventually need anyway.
+
+**Decision.** Build **Public Proxy Evaluation Set v1**: 160 utterances from pinned public
+corpora (EdAcc, LibriSpeech test-clean, RuLS, Golos crowd + farfield, plus OpenSLR-28 noise and
+RIRs), sampled deterministically with speaker quotas, and shipped as a **manifest plus a
+fetcher** — never as redistributed audio. `hermes-eval build-dataset` is the fetcher. The
+manifest schema gains an optional, strictly-validated `provenance` block and two metadata axes,
+`subset` and `reference_style`.
+
+**Rationale.** Three constraints forced the shape.
+
+*Licensing.* EdAcc is CC BY-SA 4.0 and Golos' bespoke licence is a CC BY-SA 4.0 reword, so
+derived audio would be Adapted Material with obligations attached. A manifest plus a
+content-addressed fetcher makes the question moot and keeps the repository small. `*.wav` and
+`eval/datasets/**/audio/` were already gitignored, so this costs nothing.
+
+*Reproducibility.* Revisions are pinned to full commit shas, sampling seeds and per-record
+audio sha256 are written into the manifest, and metadata is read from the pinned parquet rather
+than from an endpoint that serves whatever is current. Common Voice is excluded for exactly
+this reason — CC0, but since October 2025 it is only obtainable through Mozilla Data
+Collective behind an account and a terms acceptance, so a build cannot reproduce it.
+
+*Honesty about what it measures.* No public corpus in scope ships a formatted reference, so
+**F-WER is not computable on this set** and neither is E-WER. That fact is encoded
+(`reference_style`), sliceable, and stated at the top of the set's README rather than left for
+a reader to discover from a suspiciously large number.
+
+**Consequences.** The scoring path stays stdlib-only; the *build* path is allowed an optional
+`data` dependency group (numpy, soundfile, pyarrow, huggingface-hub) because decoding FLAC and
+convolving an RIR in pure Python is not a defensible use of anyone's time. Nothing in `runner`,
+`metrics` or the scoring CLI imports it.
+
+The set does **not** retire Task 1b. It measures accented English, read English, read Russian,
+Russian far-field commands and two robustness conditions. It measures nothing about dev-speak,
+Slavic-English code-switching, ITN, punctuation, casing, the real microphone, or the real
+acoustic environment — which is to say, it measures none of the four differentiators directly.
+**Any model decision made on this set alone is provisional and must be re-run against the
+personal set.**
+
+**v1 is frozen** as of 2026-09-27 (manifest sha256 `2b3a46ede2700f30…`): its spec and pinned
+revisions do not change again under that name, so a number quoted against it stays meaningful.
+**Not frozen:** the *next* set. v2's highest-value addition is FLEURS `en_us`/`ru_ru`,
+whose `raw_transcription` field is the only formatted reference found in the whole candidate
+pool and would restore F-WER, ITN and punctuation measurement; it was deferred on fetch cost
+(290–433 MB per language split), not on licence.

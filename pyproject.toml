@@ -10,6 +10,10 @@ hermes-eval = "hermes_eval.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6", "pyright>=1.1.380"]
+# Build-time only, for `hermes-eval build-dataset`: audio decode, resampling and the
+# robustness transforms. The scoring path stays stdlib-only on purpose — see
+# src/hermes_eval/__init__.py — so this group is never needed to run or compare.
+data = ["numpy>=1.26", "soundfile>=0.12", "pyarrow>=15", "huggingface-hub>=0.25"]
 
 [build-system]
 requires = ["hatchling"]

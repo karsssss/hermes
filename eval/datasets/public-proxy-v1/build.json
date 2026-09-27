@@ -1,0 +1,199 @@
+{
+  "built_utc": "2026-09-27T00:49:28Z",
+  "bytes_fetched": 55603733,
+  "candidates_examined": {
+    "accented_en": 63,
+    "general_en": 31,
+    "ru_clean": 20,
+    "ru_command": 10,
+    "ru_farfield": 10
+  },
+  "distinct_speakers_per_subset": {
+    "accented_en": 25,
+    "general_en": 30,
+    "ru_clean": 7,
+    "ru_command": 0,
+    "ru_farfield": 0
+  },
+  "n_records": 160,
+  "per_subset": {
+    "accented_en": 50,
+    "general_en": 30,
+    "robust_noise": 20,
+    "robust_reverb": 20,
+    "ru_clean": 20,
+    "ru_command": 10,
+    "ru_farfield": 10
+  },
+  "rejections": {
+    "accented_en": {
+      "duration": 13,
+      "excluded_l1_suffix": 2174,
+      "speaker_quota": 34,
+      "stratum_quota": 8,
+      "too_few_tokens": 4074,
+      "too_many_tokens": 783
+    },
+    "general_en": {
+      "duration": 1,
+      "speaker_quota": 16,
+      "too_few_tokens": 153,
+      "too_many_tokens": 160
+    },
+    "ru_clean": {
+      "speaker_quota": 37,
+      "too_few_tokens": 10,
+      "too_many_tokens": 1
+    },
+    "ru_command": {
+      "empty_text": 98,
+      "too_few_tokens": 1781
+    },
+    "ru_farfield": {
+      "empty_text": 1,
+      "too_few_tokens": 405
+    }
+  },
+  "sources": {
+    "edacc_test": {
+      "config": "default",
+      "dataset": "edinburghcstr/edacc",
+      "license": "CC-BY-SA-4.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "n_rows_pinned": 9289,
+      "revision": "d9ae7bd344f0562b766ec93ee5ce8f2f9568ce66",
+      "split": "test"
+    },
+    "golos_crowd_test": {
+      "config": "default",
+      "dataset": "bond005/sberdevices_golos_10h_crowd",
+      "license": "Golos Public License (CC-BY-SA-4.0 reword, not a Creative Commons licence)",
+      "license_url": "https://github.com/sberdevices/golos/blob/master/license/en_us.pdf",
+      "n_rows_pinned": 9994,
+      "revision": "e634b6b810e4d30c81b4c6d8262379fe8b9f708c",
+      "split": "test"
+    },
+    "golos_farfield_test": {
+      "config": "default",
+      "dataset": "bond005/sberdevices_golos_100h_farfield",
+      "license": "Golos Public License (CC-BY-SA-4.0 reword, not a Creative Commons licence)",
+      "license_url": "https://github.com/sberdevices/golos/blob/master/license/en_us.pdf",
+      "n_rows_pinned": 1916,
+      "revision": "c93949f7140beef4adc404e7b54841e957f81c54",
+      "split": "test"
+    },
+    "librispeech_test_clean": {
+      "config": "clean",
+      "dataset": "openslr/librispeech_asr",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "n_rows_pinned": 2620,
+      "revision": "71cacbfb7e2354c4226d01e70d77d5fca3d04ba1",
+      "split": "test"
+    },
+    "ruls_test": {
+      "config": "default",
+      "dataset": "istupakov/russian_librispeech",
+      "license": "CC-BY-4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "n_rows_pinned": 1352,
+      "revision": "a519c986bb3342cc8136d3d14e5ad8a4f1e1a2bd",
+      "split": "test"
+    }
+  },
+  "spec": {
+    "description": "Public Proxy Evaluation Set v1. Pinned public corpora, deterministic speaker-aware sampling, no redistributed audio. See README.md for what it does and does not measure.",
+    "name": "public-proxy-v1",
+    "perturbations": [
+      {
+        "from": [
+          "accented_en",
+          "general_en",
+          "ru_clean"
+        ],
+        "kind": "noise",
+        "n": 20,
+        "noise_label": "additive-noise-10db",
+        "pair_key": "robustness-pairs",
+        "snr_db": 10.0,
+        "subset": "robust_noise"
+      },
+      {
+        "from": [
+          "accented_en",
+          "general_en",
+          "ru_clean"
+        ],
+        "kind": "reverb",
+        "n": 20,
+        "noise_label": "reverberant",
+        "pair_key": "robustness-pairs",
+        "subset": "robust_reverb"
+      }
+    ],
+    "seed": 20260926,
+    "strata": [
+      {
+        "examine_budget": 160,
+        "exclude_suffix": {
+          "l1": "English"
+        },
+        "max_duration_s": 20.0,
+        "max_tokens": 45,
+        "min_duration_s": 2.0,
+        "min_tokens": 6,
+        "n": 50,
+        "per_speaker_max": 3,
+        "per_stratum_max": 8,
+        "source": "edacc_test",
+        "stratify_by": "l1",
+        "subset": "accented_en"
+      },
+      {
+        "examine_budget": 90,
+        "max_duration_s": 20.0,
+        "max_tokens": 45,
+        "min_duration_s": 2.0,
+        "min_tokens": 6,
+        "n": 30,
+        "per_speaker_max": 1,
+        "source": "librispeech_test_clean",
+        "subset": "general_en"
+      },
+      {
+        "examine_budget": 70,
+        "max_duration_s": 20.0,
+        "max_tokens": 45,
+        "min_duration_s": 2.0,
+        "min_tokens": 5,
+        "n": 20,
+        "per_speaker_max": 3,
+        "source": "ruls_test",
+        "subset": "ru_clean"
+      },
+      {
+        "examine_budget": 40,
+        "max_duration_s": 15.0,
+        "max_tokens": 30,
+        "min_duration_s": 1.0,
+        "min_tokens": 3,
+        "n": 10,
+        "source": "golos_crowd_test",
+        "subset": "ru_command"
+      },
+      {
+        "examine_budget": 40,
+        "max_duration_s": 15.0,
+        "max_tokens": 30,
+        "min_duration_s": 1.0,
+        "min_tokens": 3,
+        "n": 10,
+        "noise_label": "far-field",
+        "source": "golos_farfield_test",
+        "subset": "ru_farfield"
+      }
+    ],
+    "version": 1
+  },
+  "warnings": []
+}

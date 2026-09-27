@@ -1,0 +1,7 @@
+# A frozen manifest's sha256 IS its identity: it is quoted in eval/datasets/*/README.md,
+# printed by `hermes-eval validate`, and recorded as `manifest_sha256` in every run. With
+# core.autocrlf enabled — the Windows default — a fresh clone would check these files out
+# with CRLF, silently changing that hash and making an old run record unverifiable against
+# a new checkout of the same bytes. Pin them to LF so the hash survives the round trip.
+*.jsonl text eol=lf
+*.json  text eol=lf

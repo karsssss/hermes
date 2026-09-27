@@ -346,7 +346,17 @@ def aggregate(scores: Sequence[UtteranceScore]) -> dict[str, Any]:
     }
 
 
-SUBSET_AXES = ("language", "accent", "domain", "category", "speaker", "noise", "app")
+SUBSET_AXES = (
+    "language",
+    "accent",
+    "domain",
+    "category",
+    "speaker",
+    "noise",
+    "app",
+    "subset",
+    "reference_style",
+)
 
 
 def subset_metrics(scores: Sequence[UtteranceScore]) -> dict[str, dict[str, Any]]:

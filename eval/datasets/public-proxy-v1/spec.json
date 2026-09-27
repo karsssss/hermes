@@ -1,0 +1,84 @@
+{
+  "name": "public-proxy-v1",
+  "version": 1,
+  "seed": 20260926,
+  "description": "Public Proxy Evaluation Set v1. Pinned public corpora, deterministic speaker-aware sampling, no redistributed audio. See README.md for what it does and does not measure.",
+  "strata": [
+    {
+      "subset": "accented_en",
+      "source": "edacc_test",
+      "n": 50,
+      "per_speaker_max": 3,
+      "stratify_by": "l1",
+      "per_stratum_max": 8,
+      "exclude_suffix": {"l1": "English"},
+      "min_tokens": 6,
+      "max_tokens": 45,
+      "min_duration_s": 2.0,
+      "max_duration_s": 20.0,
+      "examine_budget": 160
+    },
+    {
+      "subset": "general_en",
+      "source": "librispeech_test_clean",
+      "n": 30,
+      "per_speaker_max": 1,
+      "min_tokens": 6,
+      "max_tokens": 45,
+      "min_duration_s": 2.0,
+      "max_duration_s": 20.0,
+      "examine_budget": 90
+    },
+    {
+      "subset": "ru_clean",
+      "source": "ruls_test",
+      "n": 20,
+      "per_speaker_max": 3,
+      "min_tokens": 5,
+      "max_tokens": 45,
+      "min_duration_s": 2.0,
+      "max_duration_s": 20.0,
+      "examine_budget": 70
+    },
+    {
+      "subset": "ru_command",
+      "source": "golos_crowd_test",
+      "n": 10,
+      "min_tokens": 3,
+      "max_tokens": 30,
+      "min_duration_s": 1.0,
+      "max_duration_s": 15.0,
+      "examine_budget": 40
+    },
+    {
+      "subset": "ru_farfield",
+      "source": "golos_farfield_test",
+      "n": 10,
+      "min_tokens": 3,
+      "max_tokens": 30,
+      "min_duration_s": 1.0,
+      "max_duration_s": 15.0,
+      "noise_label": "far-field",
+      "examine_budget": 40
+    }
+  ],
+  "perturbations": [
+    {
+      "subset": "robust_noise",
+      "kind": "noise",
+      "n": 20,
+      "snr_db": 10.0,
+      "from": ["accented_en", "general_en", "ru_clean"],
+      "pair_key": "robustness-pairs",
+      "noise_label": "additive-noise-10db"
+    },
+    {
+      "subset": "robust_reverb",
+      "kind": "reverb",
+      "n": 20,
+      "from": ["accented_en", "general_en", "ru_clean"],
+      "pair_key": "robustness-pairs",
+      "noise_label": "reverberant"
+    }
+  ]
+}

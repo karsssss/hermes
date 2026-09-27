@@ -3,6 +3,8 @@
     hermes-eval validate eval/datasets/mock/manifest.jsonl
     hermes-eval run --manifest eval/datasets/mock/manifest.jsonl --adapter perturb:seed=1
     hermes-eval compare eval/runs/<baseline> eval/runs/<candidate> --latency-budget-ms 700
+    hermes-eval build-dataset eval/datasets/public-proxy-v1/spec.json \
+        --out eval/datasets/public-proxy-v1
 
 Exit codes: 0 success (or a comparison verdict of improvement/noise), 1 failure — an
 invalid manifest, or a comparison verdict of regression / blocked_*. `compare` is
@@ -101,6 +103,28 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0 if result["decision"]["verdict"] in ("improvement", "noise") else 1
 
 
+def _cmd_build_dataset(args: argparse.Namespace) -> int:
+    # Imported here, not at module scope: the build path is allowed optional
+    # dependencies (numpy, soundfile) and the scoring path is not, so `hermes-eval run`
+    # must keep working on a bare install.
+    from .datasets.build import BuildError, build
+
+    try:
+        report = build(Path(args.spec), Path(args.out), progress=not args.quiet)
+    except BuildError as exc:
+        print(f"build failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"{report.manifest_path.as_posix()}: {len(report.records)} records")
+    for subset in sorted(report.per_subset):
+        speakers = report.speakers_per_subset.get(subset)
+        detail = f", {speakers} distinct speakers" if speakers else ""
+        print(f"  {subset}: {report.per_subset[subset]}{detail}")
+    print(f"fetched {report.bytes_fetched / 1e6:.1f} MB")
+    for warning in report.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    return 1 if report.warnings else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hermes-eval", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -137,6 +161,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_cmp.add_argument("--out", default="", help="comparison root (default eval/runs/comparisons)")
     p_cmp.add_argument("--json", action="store_true")
     p_cmp.set_defaults(func=_cmd_compare)
+
+    p_build = sub.add_parser(
+        "build-dataset",
+        help="fetch a pinned public-corpus sample and emit a manifest (needs --group data)",
+    )
+    p_build.add_argument("spec", help="path to a dataset spec JSON")
+    p_build.add_argument("--out", required=True, help="dataset directory to write into")
+    p_build.add_argument("--quiet", action="store_true")
+    p_build.set_defaults(func=_cmd_build_dataset)
     return parser
 
 

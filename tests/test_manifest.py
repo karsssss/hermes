@@ -179,3 +179,62 @@ def test_the_personal_template_is_valid():
     path = root / "eval" / "datasets" / "personal" / "manifest.template.jsonl"
     manifest = load(path, require_audio=False)
     assert manifest.ok, [str(e) for e in manifest.errors]
+
+
+# ------------------------------------------------- provenance and the proxy-set axes
+
+PROVENANCE = {
+    "source": "hf:edinburghcstr/edacc",
+    "revision": "d9ae7bd344f0562b766ec93ee5ce8f2f9568ce66",
+    "config": "default",
+    "split": "test",
+    "row_id": "5000:EDACC-C36-A",
+    "speaker_id": "EDACC-C36-A",
+    "license": "CC-BY-SA-4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "source_url": "https://datasets-server.huggingface.co/cached-assets/x",
+    "source_audio_sha256": "a" * 64,
+    "source_sample_rate_hz": 32000,
+    "audio_sha256": "b" * 64,
+    "sampling_seed": 20260926,
+    "derived_from": None,
+    "transform": None,
+    "retrieved_utc": "2026-09-26T20:00:00Z",
+}
+
+
+def test_provenance_round_trips(tmp_path: Path):
+    record = json.loads(json.dumps(VALID))
+    record["provenance"] = PROVENANCE
+    record["metadata"]["subset"] = "accented_en"
+    record["metadata"]["reference_style"] = "caps_nopunct"
+    manifest = load_strict(write(tmp_path, record))
+    assert manifest.records[0].provenance == PROVENANCE
+    assert manifest.records[0].metadata["subset"] == "accented_en"
+
+
+def test_provenance_requires_the_fields_that_make_a_number_auditable(tmp_path: Path):
+    for missing in ("source", "revision", "split", "row_id", "license", "retrieved_utc"):
+        payload = {k: v for k, v in PROVENANCE.items() if k != missing}
+        errors = errors_for(tmp_path, lambda r, p=payload: r.update(provenance=p))
+        assert any(f"provenance.{missing}" in e for e in errors), missing
+
+
+def test_provenance_rejects_unknown_keys_and_bad_hashes(tmp_path: Path):
+    errors = errors_for(tmp_path, lambda r: r.update(provenance={**PROVENANCE, "licence": "CC0"}))
+    assert any("unknown keys: licence" in e for e in errors)
+
+    errors = errors_for(
+        tmp_path, lambda r: r.update(provenance={**PROVENANCE, "audio_sha256": "nope"})
+    )
+    assert any("provenance.audio_sha256" in e for e in errors)
+
+    errors = errors_for(
+        tmp_path, lambda r: r.update(provenance={**PROVENANCE, "sampling_seed": "1"})
+    )
+    assert any("provenance.sampling_seed" in e for e in errors)
+
+
+def test_reference_style_is_constrained(tmp_path: Path):
+    errors = errors_for(tmp_path, lambda r: r["metadata"].update(reference_style="shouty"))
+    assert any("metadata.reference_style" in e for e in errors)

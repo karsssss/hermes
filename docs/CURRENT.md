@@ -2,7 +2,7 @@
 
 The only doc expected to change every session. Read this first when resuming work.
 
-**Last updated:** 2026-09-26
+**Last updated:** 2026-09-27
 
 ## Where we are
 
@@ -25,6 +25,21 @@ every metadata axis, a seeded paired utterance-level bootstrap, the decision rul
 provenance. Two adapters: `perturb` (deterministic synthetic fake-ASR, for fixtures) and
 `replay` (scores transcripts captured by hand — this is how closed competitors get
 measured). See `eval/README.md`.
+
+**The Public Proxy Evaluation Set v1 exists and validates.** 160 utterances from pinned
+public corpora — EdAcc (50, 25 speakers, 16 L1 backgrounds), LibriSpeech test-clean (30, one
+per speaker), RuLS (20, 7 readers), Golos crowd and farfield (10 each), plus 20 noise and 20
+reverb variants of the same 20 clean utterances. Built by `hermes-eval build-dataset` from
+full commit shas; the manifest and audio are **byte-identical across rebuilds**. No audio is
+redistributed — EdAcc and Golos both carry ShareAlike, and `eval/datasets/**/audio/` stays
+gitignored. See D-0012 and `eval/datasets/public-proxy-v1/`.
+
+**It is a proxy and it does not retire Task 1b.** No public corpus in scope ships a formatted
+reference, so **F-WER is not computable on it**, and none annotates entity spans, so **E-WER
+is not either**. It measures WER on accented English, read English, read Russian, Russian
+far-field commands, and two robustness deltas. It measures nothing about dev-speak,
+code-switching, ITN, punctuation, the real microphone or the capture path. Any model decision
+made on it alone is provisional.
 
 **No ASR model, no audio capture, no Rust.** That is deliberate and unchanged.
 
@@ -72,8 +87,10 @@ it exists to settle a specific measurement list that every research memo deferre
 
 ### THE NEXT TASK — record the personal eval set (Task 1b)
 
-The harness half of Task 1 is done. The data half is not, and **nothing else in Phase 0
-can be believed until it exists**, because every measurement below is scored against it.
+The harness half of Task 1 is done, and the public proxy set now covers the part of the data
+half that does not need a microphone. **The rest still needs one.** Every differentiator —
+dev-speak, code-switching, ITN, punctuation and casing, the real room — is measurable only
+against the personal set.
 
 Concretely:
 
@@ -153,10 +170,19 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 6. `uiAccess` through Tauri's bundler — unverified; `embed-manifest` 1.5.1 is the candidate.
 7. Transparent + click-through + always-on-top HUD on WebView2/Win11 — unverified.
 8. Process-boundary latency inside the 700 ms p95 budget — unmeasured.
-9. Dataset licences: Common Voice post-migration terms, TED-LIUM, CHiME, Earnings-21/22.
-   GigaSpeech is unusable. EdAcc (CC BY-SA 4.0) is verified and is the accent anchor.
-10. **No Slavic-English code-switching corpus found.** Collect our own; say so in any published
-    methodology.
+9. ~~Dataset licences: Common Voice post-migration terms, TED-LIUM, CHiME, Earnings-21/22.~~
+   **Closed 2026-09-27** for everything the proxy set touches; see
+   `eval/datasets/public-proxy-v1/LICENSES.md`. Common Voice: still CC0, but exclusively via
+   Mozilla Data Collective behind an account and terms acceptance since Oct 2025 — excluded on
+   *access*, not licence. Golos: licence PDF read in full — CC BY-SA 4.0 reword, attribution
+   plus ShareAlike, **no non-commercial clause**, and no speaker IDs published at all.
+   Earnings-22: `LICENSE.md` covers transcripts only, **audio licence unstated** — rejected.
+   TED-LIUM 3: CC BY-NC-ND. CS-FLEURS: CC BY-NC. GigaSpeech unusable. EdAcc verified.
+10. **No Slavic-English code-switching corpus found** — re-verified 2026-09-27 and now sharper.
+    CS-FLEURS has `cs_rus_eng` and `cs_ukr_eng`, but **only in its `mms` subset, which is
+    concatenative TTS**; its real-human `read` subset covers `rus` but not `ukr`, and the whole
+    dataset is CC BY-NC 4.0. Synthetic code-switch audio is not an acceptable substitute.
+    Collect our own; say so in any published methodology.
 11. Nemotron 3.5 multilingual carries `openmdw-1.1`, **a different licence from its English
     sibling** — verify separately before relying on it.
 12. sherpa-onnx `token_log_probs` (PR #2897) merge/release status is ambiguous; `rule_fsts` /
@@ -177,12 +203,15 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 - **D-0009** No LLM correction pass in Phase 1; confidence highlighting instead
 - **D-0010** Voice actions: Tier 0/1 only; the process boundary is the safety boundary
 - **D-0011** ONNX Runtime is the substrate; the ASR model is decided by measurement
+- **D-0012** Public proxy eval set stands in for the personal set, and never replaces it
 
 ## Standing instructions
 
 - **Commit only on request.** `docs/research/`, `docs/SYNTHESIS.md` are untracked or modified
   but on disk; so is the whole Phase 0 harness (`pyproject.toml`, `src/`, `tests/`, `eval/`)
-  as of 2026-09-26.
+  as of 2026-09-26, and the public proxy set as of 2026-09-27.
+- **`eval/datasets/public-proxy-v1/manifest.jsonl` and `build.json` are the artifacts; the
+  audio is not.** Never commit third-party audio — two source corpora carry ShareAlike.
 - `eval/runs/` is gitignored. Promote a run deliberately with `git add -f` when it belongs
   in the record; baselines change only by an explicit reviewed edit, never silently.
 - No pipeline change lands without an eval delta. F-WER is the headline; latency p95 is a

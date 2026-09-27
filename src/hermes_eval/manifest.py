@@ -17,16 +17,58 @@ from pathlib import Path
 from typing import Any
 
 REQUIRED_TOP_LEVEL = ("id", "audio", "reference", "metadata")
-OPTIONAL_TOP_LEVEL = ("duration_s", "entities", "itn_slots", "ground_truth", "notes")
+OPTIONAL_TOP_LEVEL = (
+    "duration_s",
+    "entities",
+    "itn_slots",
+    "ground_truth",
+    "provenance",
+    "notes",
+)
 ALLOWED_TOP_LEVEL = frozenset(REQUIRED_TOP_LEVEL + OPTIONAL_TOP_LEVEL)
 
 # Metadata keys required on every record. These are the axes the harness can slice on,
 # and a record that cannot be sliced is a record that cannot answer a question.
 REQUIRED_METADATA = ("language", "accent", "domain", "category")
-OPTIONAL_METADATA = ("code_switch", "speaker", "noise", "source", "app")
+OPTIONAL_METADATA = (
+    "code_switch",
+    "speaker",
+    "noise",
+    "source",
+    "app",
+    "subset",
+    "reference_style",
+)
 ALLOWED_METADATA = frozenset(REQUIRED_METADATA + OPTIONAL_METADATA)
 
 CATEGORIES = frozenset({"prose", "dev_speak", "code_switch", "adversarial", "itn", "command"})
+
+HEX = frozenset("0123456789abcdef")
+
+# How much formatting the reference actually carries. Public corpora almost never ship a
+# formatted reference: EdAcc and LibriSpeech are upper-case and unpunctuated, Golos and
+# RuLS are lower-case and unpunctuated. F-WER against such a reference punishes a backend
+# for producing correct casing and punctuation, so the value has to travel with the
+# record and be sliceable — see eval/datasets/public-proxy-v1/README.md.
+REFERENCE_STYLES = frozenset({"formatted", "caps_nopunct", "lower_nopunct"})
+
+# Provenance is optional, but once present it is checked strictly. It is what makes a
+# public benchmark auditable: source corpus, pinned revision, row identity, licence and
+# the hash of the exact audio that was scored.
+REQUIRED_PROVENANCE = ("source", "revision", "split", "row_id", "license", "retrieved_utc")
+OPTIONAL_PROVENANCE = (
+    "config",
+    "speaker_id",
+    "license_url",
+    "source_url",
+    "source_audio_sha256",
+    "source_sample_rate_hz",
+    "audio_sha256",
+    "sampling_seed",
+    "derived_from",
+    "transform",
+)
+ALLOWED_PROVENANCE = frozenset(REQUIRED_PROVENANCE + OPTIONAL_PROVENANCE)
 
 
 @dataclass(frozen=True)
@@ -64,6 +106,7 @@ class Record:
     duration_s: float | None = None
     entities: tuple[str, ...] = ()
     itn_slots: tuple[Slot, ...] = ()
+    provenance: dict[str, Any] | None = None
     notes: str = ""
 
     @property
@@ -100,9 +143,50 @@ def _validate_metadata(
     cs = raw.get("code_switch", [])
     if not isinstance(cs, list) or any(not isinstance(x, str) or not x for x in cs):
         errors.append(_err(line, rid, "metadata.code_switch", "must be a list of language codes"))
-    for key in ("speaker", "noise", "source", "app"):
+    for key in ("speaker", "noise", "source", "app", "subset"):
         if key in raw and not isinstance(raw[key], str):
             errors.append(_err(line, rid, f"metadata.{key}", "must be a string"))
+    style = raw.get("reference_style")
+    if style is not None and style not in REFERENCE_STYLES:
+        errors.append(
+            _err(
+                line, rid, "metadata.reference_style", f"must be one of {sorted(REFERENCE_STYLES)}"
+            )
+        )
+    return raw
+
+
+def _validate_provenance(
+    raw: Any, line: int, rid: str, errors: list[ManifestError]
+) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        errors.append(_err(line, rid, "provenance", "must be an object"))
+        return None
+    unknown = sorted(set(raw) - ALLOWED_PROVENANCE)
+    if unknown:
+        errors.append(_err(line, rid, "provenance", f"unknown keys: {', '.join(unknown)}"))
+    for key in REQUIRED_PROVENANCE:
+        value = raw.get(key)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(
+                _err(line, rid, f"provenance.{key}", "required, must be a non-empty string")
+            )
+    for key in ("config", "speaker_id", "license_url", "source_url", "derived_from", "transform"):
+        if key in raw and raw[key] is not None and not isinstance(raw[key], str):
+            errors.append(_err(line, rid, f"provenance.{key}", "must be a string or null"))
+    for key in ("source_audio_sha256", "audio_sha256"):
+        value = raw.get(key)
+        if key in raw and (
+            not isinstance(value, str) or len(value) != 64 or not all(c in HEX for c in value)
+        ):
+            errors.append(_err(line, rid, f"provenance.{key}", "must be a 64-char hex sha256"))
+    if "sampling_seed" in raw and not isinstance(raw["sampling_seed"], int):
+        errors.append(_err(line, rid, "provenance.sampling_seed", "must be an integer"))
+    rate = raw.get("source_sample_rate_hz")
+    if "source_sample_rate_hz" in raw and (not isinstance(rate, int) or rate <= 0):
+        errors.append(
+            _err(line, rid, "provenance.source_sample_rate_hz", "must be a positive integer")
+        )
     return raw
 
 
@@ -185,6 +269,10 @@ def _validate_record(
                 _err(line, rid, "ground_truth.reconciled", "must be true once reconciled")
             )
 
+    provenance: dict[str, Any] | None = None
+    if "provenance" in obj:
+        provenance = _validate_provenance(obj["provenance"], line, rid or "?", errors)
+
     notes = obj.get("notes", "")
     if not isinstance(notes, str):
         errors.append(_err(line, rid, "notes", "must be a string"))
@@ -202,6 +290,7 @@ def _validate_record(
         duration_s=float(duration) if isinstance(duration, (int, float)) else None,
         entities=tuple(entities),
         itn_slots=tuple(slots),
+        provenance=provenance,
         notes=notes,
     )
 

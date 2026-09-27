@@ -16,7 +16,11 @@ from typing import Any
 from .metrics import MARK_CLASSES
 
 SUBSET_AXIS_ORDER = (
+    # `subset` sits second because on a designed evaluation set it is the axis the run is
+    # read on; `reference_style` sits last because it is a caveat, not a result — it says
+    # which records could carry an F-WER at all.
     "language",
+    "subset",
     "code_switch",
     "accent",
     "domain",
@@ -24,6 +28,7 @@ SUBSET_AXIS_ORDER = (
     "speaker",
     "noise",
     "app",
+    "reference_style",
 )
 
 
@@ -244,7 +249,7 @@ def console_report(run: dict[str, Any]) -> str:
         ),
         f"latency    p50 {_ms(lat['p50'])}  p95 {_ms(lat['p95'])}  p99 {_ms(lat['p99'])}",
     ]
-    for axis in ("language", "code_switch", "accent", "category"):
+    for axis in ("language", "subset", "code_switch", "accent", "category"):
         groups = run.get("subsets", {}).get(axis) or {}
         if groups:
             cells = "  ".join(

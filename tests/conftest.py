@@ -16,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 MOCK_DIR = ROOT / "eval" / "datasets" / "mock"
 
 
+@pytest.fixture(scope="session")
+def repo_root() -> Path:
+    return ROOT
+
+
 @pytest.fixture(scope="session", autouse=True)
 def mock_audio_fixtures() -> None:
     expected = [
