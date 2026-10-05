@@ -15,6 +15,7 @@ re-run in place is a benchmark whose history you cannot trust.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections.abc import Sequence
@@ -31,7 +32,7 @@ from .bootstrap import (
     apply_decision_rule,
     paired_bootstrap,
 )
-from .manifest import load_strict
+from .manifest import Record, load_strict
 from .metrics import Counts, UtteranceScore, aggregate, score_utterance, subset_metrics
 from .normalize import NORMALIZER_VERSION
 from .provenance import git_state, hardware, run_id, software, utc_now
@@ -59,6 +60,36 @@ def _write_jsonl(path: Path, rows: Sequence[dict[str, Any]]) -> None:
             fh.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
 
 
+DECODE_ORDERS = ("manifest", "language")
+
+
+def _decode_sequence(records: Sequence[Record], order: str) -> list[Record]:
+    """The order utterances are *decoded* in. Outputs stay sorted by id regardless.
+
+    `language` groups the manifest by `metadata.language`, keeping first-appearance order
+    across groups and manifest order within a group. It exists for backends that bind a
+    language at construction: the public proxy manifest alternates en/ru/en/ru, so such a
+    backend pays four model loads in manifest order and two in language order. Reordering
+    is safe because scoring is per utterance and the adapter is handed one record at a
+    time — but the run records which order it used, because a reordering nobody wrote down
+    is one that gets forgotten the next time two runs' latency traces are compared.
+    """
+    if order not in DECODE_ORDERS:
+        raise ValueError(f"unknown decode order {order!r}; known: {DECODE_ORDERS}")
+    if order == "manifest":
+        return list(records)
+    groups: dict[str, list[Record]] = {}
+    for record in records:
+        groups.setdefault(str(record.metadata.get("language") or "?"), []).append(record)
+    return [record for group in groups.values() for record in group]
+
+
+def _sequence_sha256(records: Sequence[Record]) -> str:
+    """Hash of the decode order itself, so the reordering is verifiable, not just claimed."""
+    ids = [record.id for record in records]
+    return hashlib.sha256(json.dumps(ids).encode("utf-8")).hexdigest()
+
+
 def execute(
     manifest_path: Path,
     adapter_spec: str,
@@ -72,8 +103,10 @@ def execute(
     manual_steps: Sequence[str] = (),
     adapter: ASRAdapter | None = None,
     sample_resources: bool = False,
+    decode_order: str = "manifest",
 ) -> RunArtifacts:
     manifest = load_strict(manifest_path, require_audio=require_audio)
+    sequence = _decode_sequence(manifest.records, decode_order)
     engine = adapter if adapter is not None else build_adapter(adapter_spec, repo_root)
     # Called once up front so a misconfigured adapter fails before any decoding; the
     # authoritative copy is re-read after the loop, below.
@@ -84,7 +117,7 @@ def execute(
 
     scores: list[UtteranceScore] = []
     predictions: list[dict[str, Any]] = []
-    for record in manifest.records:
+    for record in sequence:
         started = time.perf_counter()
         hypothesis = engine.transcribe(record)
         wall_ms = (time.perf_counter() - started) * 1000.0
@@ -151,6 +184,10 @@ def execute(
             "fwer_mode": "raw",
             "wer_mode": "basic",
             "casing_mode": "casefold",
+        },
+        "decode_order": {
+            "mode": decode_order,
+            "sequence_sha256": _sequence_sha256(sequence),
         },
         "bootstrap_seed": seed,
         "resources": resources,

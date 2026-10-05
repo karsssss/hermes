@@ -21,7 +21,7 @@ from pathlib import Path
 from .bootstrap import DEFAULT_RESAMPLES, DEFAULT_SEED, MIN_EFFECT_PP
 from .manifest import ManifestValidationError, load
 from .report import console_report
-from .runner import compare, execute
+from .runner import DECODE_ORDERS, compare, execute
 
 
 def _repo_root(start: Path | None = None) -> Path:
@@ -58,6 +58,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             require_audio=not args.no_require_audio,
             manual_steps=args.manual_step or (),
             sample_resources=args.resources,
+            decode_order=args.decode_order,
         )
     except ManifestValidationError as exc:
         print(str(exc), file=sys.stderr)
@@ -149,6 +150,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--resources",
         action="store_true",
         help="sample this process' peak memory and GPU use during the run",
+    )
+    p_run.add_argument(
+        "--decode-order",
+        choices=DECODE_ORDERS,
+        default="manifest",
+        help=(
+            "order utterances are decoded in; 'language' groups by "
+            "metadata.language so a backend that binds a language at construction "
+            "rebuilds once rather than once per alternation. Results are written "
+            "sorted by id either way."
+        ),
     )
     p_run.add_argument(
         "--manual-step",

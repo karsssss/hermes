@@ -2,7 +2,7 @@
 
 The only doc expected to change every session. Read this first when resuming work.
 
-**Last updated:** 2026-09-27
+**Last updated:** 2026-10-05
 
 ## Where we are
 
@@ -12,7 +12,7 @@ decisions (D-0007…D-0011) were recorded, and six corrections were applied to
 `ARCHITECTURE.md`, `BENCHMARKS.md` and `CLAUDE.md`.
 
 **Phase 0 has started. The evaluation harness exists and passes its own tests.**
-`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 88 tests,
+`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 122 tests,
 ruff and pyright clean. Zero runtime dependencies — the scoring path is pure stdlib on
 purpose, because a published benchmark cannot blame its numbers on a third-party WER
 package.
@@ -22,9 +22,10 @@ F-WER with the full decomposition (casing error rate, per-class punctuation F1, 
 error rate), E-WER over annotated entity spans, latency percentiles, subset metrics on
 every metadata axis, a seeded paired utterance-level bootstrap, the decision rule from
 `BENCHMARKS.md` §1.2 encoded in code, and immutable run directories carrying full
-provenance. Two adapters: `perturb` (deterministic synthetic fake-ASR, for fixtures) and
+provenance. Three adapters: `perturb` (deterministic synthetic fake-ASR, for fixtures),
 `replay` (scores transcripts captured by hand — this is how closed competitors get
-measured). See `eval/README.md`.
+measured), and `sherpa` (real ONNX Runtime ASR, for screening only — not a shipping path).
+See `eval/README.md`.
 
 **The Public Proxy Evaluation Set v1 exists and validates.** 160 utterances from pinned
 public corpora — EdAcc (50, 25 speakers, 16 L1 backgrounds), LibriSpeech test-clean (30, one
@@ -41,12 +42,13 @@ far-field commands, and two robustness deltas. It measures nothing about dev-spe
 code-switching, ITN, punctuation, the real microphone or the capture path. Any model decision
 made on it alone is provisional.
 
-**Task 2a (ASR candidate screening) is two-thirds measured and INTERRUPTED.** Three real ASR
-backends now run through the harness on ONNX Runtime. Two completed against the frozen proxy
-set; the third was killed before it decoded anything. Full state in **§ Task 2a — recovery
-state** below and in `docs/research/T2A-screening.md`. **Do not restart a run without
-reading that section first** — one of the three is unmeasured and the eliminations are on
-hold because of it.
+**Task 2a (ASR candidate screening) is COMPLETE.** All three candidates from SYNTHESIS §5
+ran through the harness on ONNX Runtime against the frozen proxy set, on one runtime, one
+provider, one thread count and one set of audio bytes. **Nemotron Speech Streaming EN
+@560 ms is eliminated; Parakeet TDT v3 and Whisper large-v3-turbo are retained.** Parakeet
+leads every axis this set can measure. **No production backend has been chosen** — that
+needs Task 1b. Full detail in **§ Task 2a — COMPLETE** below and in
+`docs/research/T2A-screening.md`.
 
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
@@ -57,7 +59,7 @@ ship.
 1. `CLAUDE.md` — invariants and vocabulary
 2. **`docs/SYNTHESIS.md`** — the decision document; supersedes `ARCHITECTURE.md` where they
    disagree
-3. `docs/DECISIONS.md` — D-0001…D-0012
+3. `docs/DECISIONS.md` — D-0001…D-0013
 4. `docs/ROADMAP.md` — phases and checkpoints (Phase 1 scope is narrowed by SYNTHESIS §19)
 5. `docs/research/R1…R9` — evidence, only as needed
 
@@ -89,80 +91,100 @@ submissions (Llama-3.2-1B Q4_K_M: 301 ms TTFT).
 Toolchain: Python 3.11.14, Node 24.14, git 2.53, **`uv` 0.12.19** (installed 2026-09-26 to
 `~/.local/bin`). **Missing: `rustup`** — a Phase 1 prerequisite (D-0006), not Phase 0.
 
-## Task 2a — recovery state (2026-09-27)
+## Task 2a — COMPLETE (2026-09-28)
 
-**Read this before touching anything ASR.** Task 2a is screening three candidates from
-`SYNTHESIS.md` §5 against the frozen proxy set, to eliminate the unsuitable ones cheaply. It
-is **incomplete**. Two of three runs finished; the third was killed by the harness because the
-machine ran critically low on memory while the session was idle. That kill says nothing about
-the model — it never decoded an utterance.
+Task 2a screened the three candidates from `SYNTHESIS.md` §5 against the frozen proxy set,
+to eliminate the unsuitable ones cheaply. **All three are now measured. One is eliminated,
+two are retained, and no production backend has been chosen** — that was never this task's
+job. Full write-up: `docs/research/T2A-screening.md`.
 
 ### Run status
 
 | Candidate | Status | Run ID |
 |---|---|---|
-| **Parakeet TDT 0.6B v3 int8** | **Complete** | `20260927T022919Z-t2a-parakeet-tdt-v3-aff8` |
-| **Nemotron Speech Streaming EN 0.6B @560 ms int8** | **Complete** | `20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` |
-| **Whisper large-v3-turbo int8** | **INCOMPLETE — no usable data** | none; killed 03:12:50Z, before the first utterance |
+| **Parakeet TDT 0.6B v3 int8** | Complete | `20260927T022919Z-t2a-parakeet-tdt-v3-aff8` |
+| **Nemotron Speech Streaming EN 0.6B @560 ms int8** | Complete | `20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` |
+| **Whisper large-v3-turbo int8** | **Complete** | `20260928T002321Z-t2a-whisper-large-v3-turbo-c4c0` |
 
-Both completed runs scored manifest sha256 `2b3a46ede2700f30…`, n=160, and carry all six run
-artifacts. **Both live under `eval/runs/`, which is gitignored** — they exist on this machine
-only. Promote them with `git add -f` if they belong in the record; otherwise re-running is the
-only way to get them back.
+All three scored manifest sha256 `2b3a46ede2700f30…`, n=160, and carry all six run
+artifacts locally. **`run.json` and `predictions.jsonl` for each are committed** (force-added
+past the `eval/runs/` ignore, ~0.9 MB of text): the provenance, metrics and raw hypotheses,
+which is everything that costs ~80 minutes of compute to regenerate. The other four
+artifacts are derived by scoring and stay local.
 
-### THE NEXT ACTION — rerun Whisper alone to finish Task 2a
+### The outcome
 
-```
-uv run hermes-eval run --manifest eval/datasets/public-proxy-v1/manifest.jsonl \
-    --adapter "sherpa:whisper-large-v3-turbo,langs=en|ru" \
-    --label t2a-whisper-large-v3-turbo --dataset public-proxy-v1 --resources
-```
+WER %, lower is better. The bold column is the front-runner.
 
-Roughly 35 minutes at the measured RTF of ~1.8, holding 1–1.5 GB. **Close the browser first.**
-At the time of the kill, Edge alone held 4.3 GB of the machine's 15.7 GB and free physical RAM
-was 1.7 GB; that is what triggered the reap.
+| subset | n | **Parakeet TDT v3** | Nemotron EN 560 ms | Whisper turbo |
+|---|---:|---:|---:|---:|
+| OVERALL | 160 | **13.29** | 32.55 | 14.89 |
+| en / ru | 112/48 | **12.79** / 15.75 | 18.66 / 100 | 15.42 / **12.33** |
+| accented_en | 50 | **18.74** | 27.67 | 23.64 |
+| general_en | 30 | **1.81** | 4.12 | 1.81 |
+| ru_clean | 20 | 13.41 | 100 | **8.94** |
+| robust_noise / reverb | 20/20 | **18.42 / 12.57** | 30.12 / 28.36 | 18.42 / 13.74 |
 
-Nothing else in Task 2a is outstanding. The adapters, the resource sampling and the report
-scaffold are all on disk and working.
-
-### Provisional finding — Nemotron is dominated, pending Whisper
-
-On identical audio, runtime, provider, thread count and warm-up policy (WER %, lower better):
-
-| subset | n | Parakeet TDT v3 | Nemotron EN 560 ms |
+| | **Parakeet** | Nemotron | Whisper |
 |---|---:|---:|---:|
-| OVERALL | 160 | **13.29** | 32.55 |
-| general_en | 30 | **1.81** | 4.12 |
-| accented_en | 50 | **18.74** | 27.67 |
-| ru_clean / ru_command / ru_farfield | 20/10/10 | 13.41 / 3.08 / 37.78 | 100 / 100 / 100 |
-| robust_noise | 20 | **18.42** | 30.12 |
-| robust_reverb | 20 | **12.57** | 28.36 |
+| RTF corpus | **0.47** | 2.44 | 2.05 |
+| utterances slower than real time | **2 / 160** | 160 / 160 | 160 / 160 |
+| latency p50 / p95 | **2693 / 5707 ms** | 12741 / 40029 ms | 11965 / 22343 ms |
+| median latency, utterances ≤3 s | **1958 ms** | 5792 ms | 9267 ms |
+| peak working set (single session) | 996 MB | **797 MB** | 2118 MB |
+| empty outputs | 2 / 160 | 23 / 160 | **0 / 160** |
 
-| | Parakeet | Nemotron |
-|---|---:|---:|
-| RTF corpus (p50 / p95) | **0.47** (0.52 / 0.79) | 2.44 (2.44 / 2.84) |
-| latency p50 / p95 | **2693 / 5707 ms** | 12741 / 40029 ms |
-| median latency, utterances ≤3 s | **1961 ms** | 5886 ms |
-| model load / warm-up | 5735 / 5121 ms | 6699 / 19132 ms |
-| peak working set | 996 MB | **797 MB** |
-| peak VRAM | null (CPU EP) | null (CPU EP) |
-| empty outputs | 2 | 23 |
+**Eliminated: Nemotron Speech Streaming EN 0.6B @ 560 ms.** Dominated on every axis except
+peak RAM, by *both* other candidates — worse English than Whisper by 3.24 pp (CI clear of
+zero) and worse than Parakeet by more, slowest of the three, 23/160 empty outputs,
+punctuation on only 50 of 137 non-empty outputs. Its one win is 199 MB of RAM on a 15.7 GB
+machine. The streaming-harness caveat is granted and does not rescue the quality deficit.
 
-Nemotron's Russian rows are **100% by design, not by failure** — it is en-US only, and
-SYNTHESIS §6 puts Phase 1 on an English-first track, so those rows carry no weight in an
-elimination. It loses the English rows too, and the decisive number is **RTF 2.44 on the CPU
-EP**: about a fifth of real time, p95 40 s per utterance against a 700 ms end-to-end budget.
-CPU-only is a first-class requirement, so that is a 5× gap rather than a tuning gap.
+**This overturns `SYNTHESIS.md` §5, which calls Nemotron at 560 ms the "leading
+hypothesis."** That hypothesis rested on architecture and licensing, never on a laptop-class
+measurement. **Corrected 2026-10-05:** SYNTHESIS §5 and §11 now carry the measured
+ranking, and **D-0013** supersedes D-0011's model hypothesis.
 
-**This directly contradicts SYNTHESIS §5, which calls Nemotron at 560 ms the "leading
-hypothesis."** That hypothesis was formed without a laptop-class measurement, which is exactly
-the trap `BENCHMARKS.md` §1.3 warns about. It is not overturned until Whisper lands and the
-eliminations are written — but expect it to be.
+**Retained: Parakeet TDT 0.6B v3**, the front-runner. Best English and best accented English
+(the W2 core, CI clear of zero), the only candidate faster than real time on the CPU EP,
+4.7× lower short-utterance latency, 996 MB, native formatting on 154/158 non-empty outputs,
+CC-BY-4.0, simplest integration.
 
-**No candidate has been eliminated and no production backend has been chosen.** Both are
-deliberately deferred until all three are measured.
+**Retained: Whisper large-v3-turbo**, as the accuracy-tier fallback and no wider. It wins
+Russian read speech (8.94%, CI clear of zero) and returned 0 empty outputs, and it is
+statistically indistinguishable from Parakeet in aggregate. But it loses English and
+accented English with the CIs clear of zero, never once beats real time, has the worst
+short-utterance latency of all three because of the fixed 30 s encoder window, holds 2.1 GB,
+emits formatting on only ~¾ of outputs, and stalls **29.6 s on every language switch**
+through sherpa's API.
 
-### Findings already banked, independent of Whisper
+**The aggregate gap between the two survivors is noise and must not be quoted as a result.**
+Parakeet is 1.60 pp better overall, 95% CI [−0.08, +3.31] — it includes zero. What *is* real
+is the English slice: +2.63 pp [+0.80, +4.43] and accented English +4.90 pp [+1.72, +8.35].
+Paired utterance-level bootstrap, 2000 resamples, seed 20260926, on **WER** counts — not
+F-WER, which is uncomputable on this set.
+
+### Fairness work the Whisper rerun required
+
+`CURRENT.md` previously flagged this as "a fairness defect to correct when Whisper is
+rerun". It was corrected in the harness rather than caveated in prose.
+
+sherpa binds Whisper's language at recognizer construction, so `langs=en|ru` built two ORT
+sessions over one set of weights and would have reported ~2× peak RAM against two
+single-session transducers. The fix is a **one-resident-recognizer protocol**: decode all
+English rows, release the session (`gc.collect()`, with the working set read before and
+after), build the Russian one, warm it identically, decode the Russian rows. It stays **one
+run over one manifest with one sha256** — nothing merged after the fact.
+
+Verified, not assumed: the release returned **1940 MB**, and the whole-run peak (2135 MB)
+and the single-session peak (2118 MB) agree to within 17 MB, which is what says only one
+recognizer was ever resident. Switch cost is reported apart from every decode figure:
+**29.6 s** = 0.5 s evict + 6.3 s load + 22.7 s warm-up.
+
+Parakeet and Nemotron have one recognizer regardless, so their runs remain valid as measured
+and were **not** re-run.
+
+### Findings banked from Task 2a
 
 - **ORT DLL conflict on Windows, and it will recur.** The sherpa-onnx wheel ships no
   `onnxruntime.dll`, so Windows resolves the bare name to the inbox
@@ -187,43 +209,68 @@ deliberately deferred until all three are measured.
   log-prob of the **emitted** token, not the full per-step distribution that R8's entropy
   method needs, so it narrows open question #1 without closing it — and it is reachable
   through a decode loop somebody else already wrote, which is evidence about §5.1's fallback
-  plan. N-best would come from `decoding_method="modified_beam_search"`, untested.
-- **Whisper's 30 s window is structural.** Its encoder pads every input to 30 seconds, so a 3 s
-  utterance costs what a 30 s one does. For dictation, where the median utterance is a few
-  seconds, that is an architectural property and not something tuning fixes. Calibration showed
-  ~11 s per decode regardless of utterance length.
-- **A fairness defect to correct when Whisper is rerun.** sherpa binds Whisper's language at
-  recognizer construction, so `langs=en|ru` builds two ORT sessions over the same weights and
-  its peak RAM will read roughly 2× high against the other two. Either measure a single-session
-  figure separately, or report the number as an upper bound and say why.
+  plan. N-best would come from `decoding_method="modified_beam_search"`, untested. With the
+  shortlist down to two, **Parakeet is the one to test first**: it is the only survivor whose
+  speed makes it a plausible default, and it is a transducer, which is the case §5.1's
+  fallback plan was written about.
+- **Whisper's 30 s window is structural, and it is measured now.** Its encoder pads every
+  input to 30 seconds, so a 2 s utterance costs what a 25 s one does. Measured effect: it is
+  the *slowest of all three* on utterances ≤3 s (9267 ms median vs Parakeet's 1958 ms) while
+  being the faster of the two slow candidates on utterances ≥9 s. Dictation is made of short
+  utterances. Tuning does not fix this.
+- **Formatting emission differs sharply between backends, and F-WER cannot see it yet.**
+  Non-empty outputs carrying any punctuation / any uppercase: Parakeet 154/154 of 158,
+  Whisper 117/120 of 160, Nemotron 50/137 of 137. So ~a quarter of Whisper's outputs come back
+  unformatted through this export at `greedy_search`, and Nemotron would need a separate
+  punctuation model. Caveat twice over: it is a property of these exports and this runtime,
+  not necessarily of the models, and it counts emission rather than correctness. It is a flag
+  for Task 1b, where a formatted reference exists, not a score.
 
-### Harness changes made for Task 2a (on disk, uncommitted)
+### Harness changes made for Task 2a (on disk)
 
 - `src/hermes_eval/asr_sherpa.py` — the three candidates, pinned, behind the existing
-  `ASRAdapter` seam. Never reads `record.reference`.
+  `ASRAdapter` seam. Never reads `record.reference`. Now also takes `resident=N`, which caps
+  how many recognizers may be alive at once and times/measures the teardown, plus a
+  `language_sessions` block in the run record's provenance.
 - `src/hermes_eval/resources.py` — per-process peak working set / commit, and PID-attributed
   VRAM. This is R6's deferred resource sampling, now landed. Peak VRAM is **null rather than
   zero** when nothing is attributable: "no GPU allocation" and "could not observe one" are
   different claims.
 - `runner.py` re-reads `describe_env()` after the loop, so corpus RTF and decode totals reach
   the run record; `predictions.jsonl` now carries per-utterance `extra` (RTF, audio seconds).
+- `runner.py` also gained `--decode-order manifest|language`. Language order groups the
+  manifest by `metadata.language` before decoding, so a backend that binds a language at
+  construction rebuilds once rather than once per alternation; outputs stay sorted by id, and
+  the run record carries the mode plus a sha256 of the decode sequence. Default is unchanged.
 - `hermes-eval run --resources` turns sampling on. Off by default.
 - `pyproject.toml` gains an optional `asr` group (sherpa-onnx, onnxruntime, numpy, soundfile).
   The scoring path stays stdlib-only and never imports it.
 - Models live in `models/` (gitignored), ~1.5 GB, fetched from the sherpa-onnx `asr-models`
   release. Download commands are in `docs/research/T2A-screening.md`.
 
+### What Task 2a deliberately did not do
+
+- **No production backend chosen.** That needs the personal set: F-WER on a formatted
+  reference, E-WER on annotated entities, dev-speak, code-switching, ITN, the real
+  microphone. Parakeet leads every axis this proxy set can measure; that is a strong prior
+  for Task 2 item 3, not a decision.
+- **No re-run of Parakeet or Nemotron**, no added models, no added datasets, no fine-tuning.
+
 ## Next steps — Phase 0
 
 Phase 0 is a **throwaway Python spike, ~1 week** (D-0006). Its purpose is no longer vague:
 it exists to settle a specific measurement list that every research memo deferred to it.
 
-### AFTER TASK 2a — record the personal eval set (Task 1b)
+### THE NEXT ACTION — record the personal eval set (Task 1b)
 
-**Not the immediate next action.** Finishing Task 2a (the Whisper rerun, above) comes
-first, and the personal set is explicitly deferred for now. This stays here because it is
-the task that unblocks every differentiator, and because no amount of proxy-set work
-retires it.
+**Task 2a is done, so this is now the top of the queue.** It unblocks every differentiator,
+and no amount of proxy-set work retires it. Task 2a's own conclusion points here: Parakeet
+leads on the proxy set, but the proxy set cannot see F-WER, E-WER, dev-speak,
+code-switching, ITN or the real microphone, so the backend decision cannot be made without
+this.
+
+**It needs a human with a microphone, not a coding session.** Everything that could be done
+without one has been.
 
 The harness half of Task 1 is done, and the public proxy set now covers the part of the data
 half that does not need a microphone. **The rest still needs one.** Every differentiator —
@@ -279,7 +326,10 @@ order:
    run the transducer decode loop ourselves.
 2. fp32 vs int8 WER on our own audio, for whichever backend we test. **No measured pair exists
    anywhere** — circulating claims trace to content farms.
-3. Nemotron Streaming EN vs Parakeet TDT v3 on the personal set: F-WER, E-WER, latency.
+3. **Parakeet TDT v3 vs Whisper large-v3-turbo on the personal set: F-WER, E-WER,
+   latency.** The two Task 2a survivors; Nemotron was eliminated 2026-09-28. This is the
+   measurement that picks the production backend, and the proxy set cannot substitute for
+   it — it cannot compute either headline metric.
 4. int8-vs-fp32 joiner emission *timestamp* drift (WER is insensitive to this failure mode).
 5. Thread-count sweep on the P/E-core split — `-t 4/6/8/12`.
 6. Confidence signal quality on **accented and code-switched** speech — nobody has measured
@@ -347,11 +397,21 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
     new feature development has moved to **WinML**; sherpa-onnx has no prebuilt DirectML
     wheels; and dynamic-int8 graphs are what the DML EP handles worst. D-0011's *reasons*
     for DirectML still hold, its upstream trajectory does not. Raised 2026-09-27 by Task 2a.
-15. **Does any candidate reach the 700 ms p95 budget on this hardware at all?** Measured so
-    far: Parakeet p95 5707 ms, Nemotron p95 40029 ms, on the CPU EP at 4 threads, whole-
-    utterance decode. The budget assumes streaming decode overlapped with speech, which none
-    of these runs did — so this is not yet a fair comparison against it, and making it one is
-    its own experiment.
+15. **Does any candidate reach the 700 ms p95 budget on this hardware at all?** Now measured
+    for all three: Parakeet p95 5707 ms, Whisper 22343 ms, Nemotron 40029 ms, on the CPU EP
+    at 4 threads, whole-utterance decode. The budget assumes streaming decode overlapped with
+    speech, which none of these runs did — so this is still not a fair comparison against it,
+    and making it one is its own experiment. What the screening *did* settle is that only
+    Parakeet is even in range: it is the sole candidate faster than real time on the CPU EP
+    (RTF 0.47, slower than real time on 2 of 160 utterances, against 160 of 160 for both
+    others). A backend that cannot keep up with the audio cannot overlap with it either.
+16. **Is Whisper's inconsistent formatting a property of the model or of this export?**
+    Raised 2026-09-28 by Task 2a. Through the sherpa-onnx int8 export at `greedy_search`,
+    ~a quarter of Whisper's outputs came back with no punctuation and no casing, where
+    Parakeet formatted 154 of 158. Whisper's formatting is known to be prompt-sensitive and
+    this run did not control the decoder prompt tokens sherpa supplies. It matters because
+    F-WER is the headline metric and unformatted output fails it outright — but it cannot be
+    settled on the proxy set, whose references are unformatted anyway.
 
 ## Decisions (full text in `DECISIONS.md`)
 
@@ -367,19 +427,21 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 - **D-0010** Voice actions: Tier 0/1 only; the process boundary is the safety boundary
 - **D-0011** ONNX Runtime is the substrate; the ASR model is decided by measurement
 - **D-0012** Public proxy eval set stands in for the personal set, and never replaces it
+- **D-0013** Task 2a eliminates Nemotron; Parakeet TDT v3 is the front-runner, Whisper the fallback
 
 ## Standing instructions
 
-- **Commit only on request.** `docs/research/`, `docs/SYNTHESIS.md` are untracked or modified
-  but on disk; so is the whole Phase 0 harness (`pyproject.toml`, `src/`, `tests/`, `eval/`)
-  as of 2026-09-26, and the public proxy set as of 2026-09-27. **Task 2a's harness work is
-  uncommitted as of 2026-09-27**: `src/hermes_eval/asr_sherpa.py`,
-  `src/hermes_eval/resources.py`, and edits to `adapters.py`, `runner.py`, `cli.py`,
-  `pyproject.toml`, `tests/test_datasets.py`.
-- **The two completed Task 2a runs are gitignored and exist on this machine only.**
-  `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8` and
-  `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4`. Losing them costs ~50
-  minutes of compute to regenerate. Promote with `git add -f` if they belong in the record.
+- **Commit only on request.** Task 2a is committed in full as of 2026-10-05: the
+  one-resident-recognizer support, `--decode-order`, their tests, the write-ups, D-0013 and
+  the SYNTHESIS §5/§11 corrections.
+- **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
+  `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
+  `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and
+  `eval/runs/20260928T002321Z-t2a-whisper-large-v3-turbo-c4c0`. All three record
+  `git.dirty: true`: Parakeet and Nemotron ran on `a2bbbf3` plus the Task 2a adapter work
+  committed in `fa56244`; Whisper ran on `fa56244` plus the resident/decode-order work
+  committed with this checkpoint. Its decode-sequence sha256 (`d0b0bc90…`) reproduces from
+  the committed code.
 - **`eval/datasets/public-proxy-v1/manifest.jsonl` and `build.json` are the artifacts; the
   audio is not.** Never commit third-party audio — two source corpora carry ShareAlike.
 - `eval/runs/` is gitignored. Promote a run deliberately with `git add -f` when it belongs

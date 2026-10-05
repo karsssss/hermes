@@ -23,10 +23,19 @@ Three integration facts worth recording, because each cost time to find:
 3. Whisper's encoder is a fixed 30-second window. A 3-second utterance costs the same as a
    30-second one. For a dictation product, where the median utterance is a few seconds,
    that is a structural property rather than a tuning problem.
+4. sherpa binds Whisper's language at *recognizer construction*, so a multi-language run
+   naively builds one ORT session per language over the same weights and its peak RAM
+   reads roughly 2x high against the single-session transducers. That would not be a
+   comparison, it would be an artefact of the harness. `max_resident` caps how many
+   recognizers may exist at once; at 1 the adapter tears the resident one down before
+   building the next, so peak RAM is a single-session figure for every candidate. The
+   teardown is not free, so it is timed and reported separately rather than buried in a
+   decode number (`language_sessions`, `language_switch_ms_total`).
 """
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import math
 import shutil
@@ -38,6 +47,7 @@ from typing import Any
 
 from .adapters import Hypothesis
 from .manifest import Record
+from .resources import process_memory
 
 TARGET_RATE = 16000
 
@@ -212,6 +222,51 @@ class _Timing:
     per_language: dict[str, int] = field(default_factory=dict)
 
 
+@dataclass
+class _Session:
+    """One resident recognizer's life: what it cost to stand up, and what it held.
+
+    `peak_working_set_mb` is the process' *current* working set sampled after every decode
+    in this session, maxed. That is deliberately not the OS high-water mark
+    (`PeakWorkingSetSize`), which never falls and so cannot tell two sequential sessions
+    apart. The high-water figure is still reported by the run's resource sampler; this is
+    the per-session reading that makes a single-session claim checkable.
+    """
+
+    index: int
+    language: str
+    load_ms: float = 0.0
+    warmup_ms: float = 0.0
+    evict_ms: float = 0.0
+    utterances: int = 0
+    decode_ms: float = 0.0
+    audio_s: float = 0.0
+    working_set_after_load_mb: float | None = None
+    peak_working_set_mb: float | None = None
+    released_mb: float | None = None
+
+    def to_json(self) -> dict[str, object]:
+        return {
+            "index": self.index,
+            "language": self.language,
+            "load_ms": round(self.load_ms, 1),
+            "warmup_ms": round(self.warmup_ms, 1),
+            "evict_ms": round(self.evict_ms, 1),
+            "utterances": self.utterances,
+            "decode_ms": round(self.decode_ms, 1),
+            "audio_s": round(self.audio_s, 2),
+            "rtf": round(self.decode_ms / 1000.0 / self.audio_s, 4) if self.audio_s > 0 else None,
+            "working_set_after_load_mb": self.working_set_after_load_mb,
+            "peak_working_set_mb": self.peak_working_set_mb,
+            "released_on_evict_mb": self.released_mb,
+        }
+
+
+def _working_set_mb() -> float | None:
+    value = process_memory().get("working_set_mb")
+    return value if isinstance(value, float) else None
+
+
 class SherpaAdapter:
     """One candidate, one runtime, one thread count. Never reads `record.reference`."""
 
@@ -224,6 +279,7 @@ class SherpaAdapter:
         provider: str = PROVIDER,
         warmup_runs: int = WARMUP_RUNS,
         languages: tuple[str, ...] = ("en",),
+        max_resident: int = 0,
     ) -> None:
         ensure_runtime()
         import sherpa_onnx
@@ -233,7 +289,15 @@ class SherpaAdapter:
         self.name = candidate.key
         self.num_threads = int(num_threads)
         self.provider = provider
+        self.warmup_runs = int(warmup_runs)
+        self.languages = tuple(languages)
+        # 0 means "no cap" — the original behaviour, kept for the transducers, which have
+        # exactly one recognizer anyway. 1 is the fair setting for Whisper.
+        self.max_resident = max(0, int(max_resident))
         self.timing = _Timing()
+        self.sessions: list[_Session] = []
+        self._sessions_by_key: dict[str, _Session] = {}
+        self._current: _Session | None = None
 
         self.dir = Path(models_root) / candidate.model_dir
         if not self.dir.is_dir():
@@ -246,21 +310,75 @@ class SherpaAdapter:
         self.model_sha256 = _combined_sha256([self.dir / f for f in candidate.files])
         self.timing.hash_ms = (time.perf_counter() - started) * 1000.0
 
-        started = time.perf_counter()
         self._recognizers: dict[str, Any] = {}
         if candidate.kind == "whisper":
-            for lang in languages:
-                self._recognizers[lang] = self._build_whisper(lang)
+            # Under a cap, only the first language is stood up now; the rest are built on
+            # demand, after the resident one has been released. Without a cap the old
+            # behaviour is preserved exactly, so existing runs stay reproducible.
+            initial = self.languages[:1] if self.max_resident == 1 else self.languages
+            for lang in initial:
+                self._open_session(lang)
         else:
-            self._recognizers["*"] = self._build_transducer()
-        self.timing.load_ms = (time.perf_counter() - started) * 1000.0
+            self._open_session("*")
+
+    # -- session lifecycle ------------------------------------------------------
+
+    def _open_session(self, key: str) -> _Session:
+        """Stand up one recognizer and warm it, on the clock.
+
+        Every session gets the identical warm-up the other candidates got — two decodes of
+        the same synthetic signal. A second session that skipped warm-up would pay ORT's
+        graph-init cost inside its first *timed* utterance, which would show up as a
+        latency outlier attributable to the harness rather than the model.
+        """
+        session = _Session(index=len(self.sessions), language=key)
+
+        started = time.perf_counter()
+        if self.candidate.kind == "whisper":
+            recognizer = self._build_whisper(key)
+        else:
+            recognizer = self._build_transducer()
+        session.load_ms = (time.perf_counter() - started) * 1000.0
+        self._recognizers[key] = recognizer
 
         started = time.perf_counter()
         signal = _warmup_signal()
-        for _ in range(warmup_runs):
-            for recognizer in self._recognizers.values():
-                self._decode(recognizer, signal, TARGET_RATE)
-        self.timing.warmup_ms = (time.perf_counter() - started) * 1000.0
+        for _ in range(self.warmup_runs):
+            self._decode(recognizer, signal, TARGET_RATE)
+        session.warmup_ms = (time.perf_counter() - started) * 1000.0
+
+        session.working_set_after_load_mb = _working_set_mb()
+        session.peak_working_set_mb = session.working_set_after_load_mb
+
+        self.timing.load_ms += session.load_ms
+        self.timing.warmup_ms += session.warmup_ms
+        self.sessions.append(session)
+        self._sessions_by_key[key] = session
+        self._current = session
+        return session
+
+    def _release(self) -> None:
+        """Drop every resident recognizer and make the memory actually go back.
+
+        `gc.collect()` is not decoration here: sherpa's Python wrapper holds the C++
+        recognizer, and until the last reference is collected the ORT session, its weights
+        and its arenas stay mapped. Without this the next session's peak would include the
+        previous one's — exactly the artefact this mode exists to remove.
+        """
+        if not self._recognizers:
+            return
+        before = _working_set_mb()
+        started = time.perf_counter()
+        self._recognizers.clear()
+        gc.collect()
+        elapsed = (time.perf_counter() - started) * 1000.0
+        after = _working_set_mb()
+        session = self._current
+        if session is not None:
+            session.evict_ms = elapsed
+            if before is not None and after is not None:
+                session.released_mb = round(before - after, 1)
+        self._current = None
 
     # -- construction -----------------------------------------------------------
 
@@ -309,10 +427,14 @@ class SherpaAdapter:
 
     def _recognizer_for(self, record: Record) -> Any:
         if self.candidate.kind != "whisper":
+            self._current = self._sessions_by_key["*"]
             return self._recognizers["*"]
         language = str(record.metadata.get("language") or "en")
         if language not in self._recognizers:
-            self._recognizers[language] = self._build_whisper(language)
+            if self.max_resident and len(self._recognizers) >= self.max_resident:
+                self._release()
+            self._open_session(language)
+        self._current = self._sessions_by_key[language]
         return self._recognizers[language]
 
     def transcribe(self, record: Record) -> Hypothesis:
@@ -325,6 +447,18 @@ class SherpaAdapter:
         self.timing.decode_ms_total += decode_ms
         self.timing.audio_s_total += audio_s
         self.timing.utterances += 1
+        session = self._current
+        if session is not None:
+            session.utterances += 1
+            session.decode_ms += decode_ms
+            session.audio_s += audio_s
+            current = _working_set_mb()
+            if current is not None:
+                session.peak_working_set_mb = (
+                    current
+                    if session.peak_working_set_mb is None
+                    else max(session.peak_working_set_mb, current)
+                )
         if not text.strip():
             self.timing.empty_outputs += 1
         language = str(record.metadata.get("language") or "?")
@@ -348,6 +482,17 @@ class SherpaAdapter:
             if timing.audio_s_total > 0
             else None
         )
+        # What a language switch cost: standing the replacement up, warming it to the same
+        # policy, and tearing the previous one down. Reported apart from decode because it
+        # is a property of the integration (sherpa binds Whisper's language at
+        # construction), not of the model's speed, and a production design could avoid it
+        # by dropping to a lower-level API.
+        switch_ms = sum(x.load_ms + x.warmup_ms for x in self.sessions[1:]) + sum(
+            x.evict_ms for x in self.sessions
+        )
+        session_peaks = [
+            x.peak_working_set_mb for x in self.sessions if x.peak_working_set_mb is not None
+        ]
         return {
             "backend": f"sherpa-onnx:{self.candidate.key}",
             "version": getattr(self._sherpa, "__version__", "1.13.8"),
@@ -365,6 +510,7 @@ class SherpaAdapter:
                 "language_source": (
                     "manifest metadata.language" if self.candidate.kind == "whisper" else "n/a"
                 ),
+                "max_resident_recognizers": self.max_resident or None,
             },
             "thread_count": self.num_threads,
             "model_license": self.candidate.license,
@@ -372,19 +518,36 @@ class SherpaAdapter:
             "model_dir": self.dir.name,
             "notes": self.candidate.notes,
             "load_ms": round(timing.load_ms, 1),
+            "load_ms_first_session": round(self.sessions[0].load_ms, 1) if self.sessions else None,
             "model_hash_ms": round(timing.hash_ms, 1),
             "warmup_ms": round(timing.warmup_ms, 1),
+            "warmup_ms_first_session": (
+                round(self.sessions[0].warmup_ms, 1) if self.sessions else None
+            ),
             "decode_ms_total": round(timing.decode_ms_total, 1),
             "audio_s_total": round(timing.audio_s_total, 2),
             "rtf_corpus": rtf,
             "utterances_decoded": timing.utterances,
             "empty_outputs": timing.empty_outputs,
             "utterances_per_language": dict(sorted(timing.per_language.items())),
+            "language_sessions": [x.to_json() for x in self.sessions],
+            "language_switches": max(0, len(self.sessions) - 1),
+            "language_switch_ms_total": round(switch_ms, 1),
+            # The largest working set observed while any one recognizer was resident. With
+            # max_resident=1 this is a single-session figure by construction, and it is the
+            # number that compares fairly against the single-session transducers.
+            "peak_working_set_mb_single_session": max(session_peaks) if session_peaks else None,
         }
 
 
 def build(spec: str, repo_root: Path) -> SherpaAdapter:
-    """`sherpa:<candidate-key>[,threads=N][,langs=en|ru]`"""
+    """`sherpa:<candidate-key>[,threads=N][,langs=en|ru][,resident=1]`
+
+    `resident=1` keeps at most one recognizer alive at a time. It only bites on Whisper,
+    which is the only candidate that builds one per language; pair it with
+    `--decode-order language` so the run pays for one switch rather than one per
+    alternation.
+    """
     key, _, rest = spec.partition(",")
     key = key.strip()
     if key not in CANDIDATES:
@@ -399,4 +562,5 @@ def build(spec: str, repo_root: Path) -> SherpaAdapter:
         Path(repo_root) / "models",
         num_threads=int(options.get("threads", NUM_THREADS)),
         languages=languages or ("en",),
+        max_resident=int(options.get("resident", 0)),
     )

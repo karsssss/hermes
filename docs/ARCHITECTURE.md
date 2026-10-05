@@ -45,7 +45,9 @@ streaming ASR model. The 4.8 GB figure was driven by a correction LLM that no lo
 Phase 1. The headroom is real but must be *earned* by measurement, not filled because it
 is free.
 
-A CPU-only path must also work (Moonshine v2 / Parakeet ONNX int8 hit RTFx > 6 on CPU),
+A CPU-only path must also work (Moonshine v2 / Parakeet ONNX int8 hit RTFx > 6 on CPU —
+*a published figure; measured here, Parakeet int8 runs at RTF 0.47, i.e. RTFx ≈ 2.1, on the
+i5-12450H at 4 threads, whole-utterance decode — `docs/research/T2A-screening.md`*),
 because a large share of Windows laptops have no usable discrete GPU. Treat CPU-only as a
 first-class configuration, not a degraded fallback.
 
@@ -190,7 +192,7 @@ check this before adopting any library.
 | **Final (local)** | Same model, full-utterance pass with full right context | A second pass over the complete utterance beats streaming output measurably, for ~100 ms |
 | **Accuracy (local)** | Whisper large-v3-turbo, CT2 int8 | 99 languages; the fallback when the draft's confidence is low or the language is outside Parakeet's 25 |
 | **Ceiling (cloud, opt-in)** | Canary-Qwen 2.5B (5.63% WER, current Open ASR Leaderboard #1) or a hosted API | Only on explicit escalation |
-| **CPU-only** | Moonshine v2 / Parakeet ONNX int8 | Sliding-window attention, bounded latency, RTFx > 6 on CPU |
+| **CPU-only** | Moonshine v2 / Parakeet ONNX int8 | Sliding-window attention, bounded latency, RTFx > 6 on CPU (published; measured RTFx ≈ 2.1 for Parakeet here — §1) |
 
 Canary-Qwen is **English-only** — do not let it become the default path, or W2 (accents and
 multilingual) silently dies.

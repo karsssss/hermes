@@ -5,3 +5,5 @@
 # a new checkout of the same bytes. Pin them to LF so the hash survives the round trip.
 *.jsonl text eol=lf
 *.json  text eol=lf
+# Promoted eval runs are immutable records: commit their bytes exactly, no EOL normalization
+eval/runs/** -text

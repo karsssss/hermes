@@ -323,7 +323,8 @@ undo-rate data can calibrate them, and none exists yet.
 
 ## D-0011 — ONNX Runtime is the inference substrate; the model is decided by measurement
 
-**Status:** accepted · 2026-09-26
+**Status:** accepted · 2026-09-26 · **its model hypothesis is superseded by D-0013**; the
+substrate decision stands; the DirectML default is under review (open question #14), not changed
 
 **Context.** R5's elimination converged the production path: `sherpa-rs` is archived (so
 sherpa-onnx from Rust means maintaining our own FFI), NeMo-Speech.cpp has no Rust bindings and
@@ -406,3 +407,50 @@ revisions do not change again under that name, so a number quoted against it sta
 whose `raw_transcription` field is the only formatted reference found in the whole candidate
 pool and would restore F-WER, ITN and punctuation measurement; it was deferred on fetch cost
 (290–433 MB per language split), not on licence.
+
+---
+
+## D-0013 — Task 2a eliminates Nemotron; Parakeet TDT v3 is the front-runner
+
+**Status:** accepted · 2026-10-05 · **supersedes D-0011's model hypothesis**
+
+**Context.** D-0011 named Nemotron Speech Streaming EN 0.6B @ 560 ms the leading hypothesis,
+with Parakeet TDT 0.6B v3 as the multilingual candidate and Whisper large-v3-turbo as the
+accuracy-tier fallback. That ranking rested on architecture and licensing; nothing in it was
+measured on this hardware. Task 2a then ran all three through `hermes-eval` on one runtime
+(ORT 1.28 via sherpa-onnx 1.13.8), the CPU EP, 4 threads, int8, `greedy_search`, against the
+frozen public proxy set (n=160, manifest `2b3a46ede2700f30…`). Full write-up:
+`docs/research/T2A-screening.md`.
+
+**Decision.** **Nemotron Speech Streaming EN @ 560 ms leaves the Phase 1 candidate set.**
+**Parakeet TDT 0.6B v3 is the front-runner. Whisper large-v3-turbo is retained as the
+accuracy-tier fallback and as the comparator** the backend decision is measured against. The
+production backend is **still not chosen** — that waits for F-WER and E-WER on the personal
+set (Task 1b), per D-0012.
+
+**Rationale.** WER %, lower is better; Δ by paired bootstrap, 2000 resamples, seed 20260926.
+
+| | Parakeet | Whisper | Nemotron |
+|---|---:|---:|---:|
+| WER overall / en / accented_en | 13.29 / 12.79 / 18.74 | 14.89 / 15.42 / 23.64 | 32.55 / 18.66 / 27.67 |
+| RTF, CPU EP | 0.47 | 2.05 | 2.44 |
+| median latency, utterances ≤3 s | 1958 ms | 9267 ms | 5792 ms |
+| empty outputs | 2 / 160 | 0 / 160 | 23 / 160 |
+
+Nemotron is dominated by both others on every axis except peak RAM (797 MB vs 996 MB): Whisper
+alone beats it on English by 3.24 pp, CI [1.28, 5.48]. Its streaming harness is pessimistic
+about its speed, but that caveat does not touch its quality. Parakeet beats Whisper on English
+(+2.63 pp [0.80, 4.43]) and accented English (+4.90 pp [1.72, 8.35]), and is the only
+candidate faster than real time. Whisper wins Russian read speech (−4.47 pp [−8.89, −1.09]),
+so it is not dominated and stays. **The overall Parakeet–Whisper gap (+1.60 pp, CI
+[−0.08, +3.31]) is noise and must not be quoted as a result.**
+
+**Consequences.** All of this is WER on a proxy set that cannot see F-WER, E-WER, dev-speak,
+code-switching, ITN or the real microphone, so it is a strong prior, not a selection. The
+boosting support and ORT GenAI bindings that made Nemotron attractive go with it; biasing on
+Parakeet has to be built in our own decode loop (§5.1), which was already the expected path.
+Whisper carries a measured 29.6 s stall per language switch through sherpa's API and pads
+every input to a 30 s window, both costs against it as anything but a fallback.
+**DirectML vs WinML is explicitly not decided here** — every Task 2a figure is CPU EP, so this
+entry says nothing about any GPU execution provider.
+

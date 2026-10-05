@@ -1,6 +1,7 @@
 # Synthesis — R1 through R9
 
 Status: 2026-09-26. Written by the lead after all nine research memos landed.
+**Amended 2026-10-05:** §5 and §11 corrected by the Task 2a measurement (D-0013).
 
 This is the decision document. `ARCHITECTURE.md` describes the target system; this says
 what the research actually settled, what it left open, and what Phase 1 should build.
@@ -129,12 +130,19 @@ mechanical rewrite, whereas an FST toolchain migration does not.
 - **Execution provider: DirectML default, CPU EP always working.** CUDA is blocked on a legal
   question, not an engineering one — cuDNN's redistributability is unconfirmed and needs a
   direct EULA read before any engineering time. DirectML ships with the Windows/driver stack,
-  works across vendors, and has no redistribution question.
-- **Model: decided in Phase 0 by measurement, not here.** Leading hypothesis is **Nemotron
-  Speech Streaming EN 0.6B** at the 560 ms chunk configuration (cache-aware RNNT, boosting
-  support, NVIDIA Open Model License, official Rust bindings via ONNX Runtime GenAI).
-  Parakeet TDT 0.6B v3 (CC-BY-4.0, 25 languages including Ukrainian and Russian) is the
-  multilingual candidate. Whisper large-v3-turbo CT2 int8 remains the accuracy-tier fallback.
+  works across vendors, and has no redistribution question. *Reopened, not decided
+  (2026-10-05):* ONNX Runtime now says new feature development has moved to WinML, and no
+  candidate has been measured on DirectML — see `CURRENT.md` open question #14.
+- **Model: decided in Phase 0 by measurement, not here.** *Corrected 2026-10-05 (D-0013).*
+  This section originally named Nemotron Speech Streaming EN 0.6B @ 560 ms the leading
+  hypothesis, on architecture and licensing alone. Task 2a measured all three candidates on
+  this laptop (`docs/research/T2A-screening.md`) and **eliminated Nemotron**: worse WER than
+  both others with the CI clear of zero, slowest of the three, 23/160 empty outputs.
+  **Parakeet TDT 0.6B v3 is the front-runner** — best English and accented-English WER, and
+  the only candidate faster than real time on the CPU EP. **Whisper large-v3-turbo is
+  retained as the accuracy-tier fallback and comparator.** The production backend is still
+  undecided: the proxy set cannot compute F-WER or E-WER, so the choice waits for the
+  personal set (Task 1b).
 
 ### 5.1 The risk this creates, which no single memo owns
 
@@ -329,8 +337,12 @@ Revised VRAM budget, now that the correction LLM is out of Phase 1:
 | Component | VRAM | Note |
 |---|---|---|
 | Silero VAD | ~0 (CPU) | ~1 MB ONNX |
-| Nemotron Streaming EN 0.6B int8 | ~0.7 GB | Resident |
-| **Phase 1 total** | **~0.7 GB** | Large headroom against 6 GB |
+| Parakeet TDT 0.6B v3 int8 | unmeasured on GPU | Resident; 996 MB working set on the CPU EP (Task 2a) |
+| **Phase 1 total** | **~1 GB, estimated** | Large headroom against 6 GB |
+
+*Corrected 2026-10-05:* this table originally budgeted Nemotron Streaming EN at ~0.7 GB.
+Nemotron was eliminated by Task 2a (D-0013). Every Task 2a figure is CPU EP, so no candidate's
+VRAM has been measured; the row above is a working-set figure, not a VRAM one.
 
 The 4.8 GB worst case in `ARCHITECTURE.md` §1 was driven by a correction LLM that is no longer
 in Phase 1. Headroom is now available for a second ASR tier (§6) if measurement justifies it —

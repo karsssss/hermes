@@ -5,8 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project state
 
 Hermes is a local-first Windows dictation service. **Phase 0 is under way.** The only code
-in the repository is the evaluation harness (`src/hermes_eval/`, `eval/`) — no ASR, no
-audio capture, no Rust yet. Read `docs/CURRENT.md` for where things stand.
+in the repository is the evaluation harness (`src/hermes_eval/`, `eval/`). It includes a
+sherpa-onnx ASR adapter used to *screen* candidate models (Task 2a: Parakeet TDT v3 leads,
+Whisper large-v3-turbo retained, Nemotron eliminated — D-0013); that is measurement code, not
+a shipping path. No audio capture, no Rust yet. Read `docs/CURRENT.md` for where things stand.
 
 Read `docs/SYNTHESIS.md` first — it is the current decision document (R1–R9 synthesized,
 Phase 1 scope, proposed contracts, deferred decisions) and it corrects several claims in

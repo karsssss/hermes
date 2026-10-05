@@ -9,7 +9,8 @@ import pytest
 
 from hermes_eval.adapters import PerturbAdapter, ReplayAdapter, build_adapter, missing_env_keys
 from hermes_eval.cli import main
-from hermes_eval.runner import compare, execute
+from hermes_eval.manifest import Record
+from hermes_eval.runner import _decode_sequence, compare, execute
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK = ROOT / "eval" / "datasets" / "mock" / "manifest.jsonl"
@@ -199,3 +200,90 @@ def test_cli_validate_reports_bad_manifest(tmp_path: Path, capsys):
     bad.write_text('{"id": "x"}\n', encoding="utf-8")
     assert main(["validate", str(bad)]) == 1
     assert "missing keys" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- decode order
+
+
+def _rec(rid: str, language: str) -> Record:
+    return Record(id=rid, audio=Path(rid), reference="x", metadata={"language": language})
+
+
+def test_decode_order_manifest_is_the_manifest_order():
+    records = [_rec("a", "en"), _rec("b", "ru"), _rec("c", "en")]
+    assert [r.id for r in _decode_sequence(records, "manifest")] == ["a", "b", "c"]
+
+
+def test_decode_order_language_groups_without_losing_or_duplicating_records():
+    records = [
+        _rec("a", "en"),
+        _rec("b", "ru"),
+        _rec("c", "en"),
+        _rec("d", "ru"),
+        _rec("e", "en"),
+    ]
+    ordered = _decode_sequence(records, "language")
+    # First-appearance order across groups, manifest order within one.
+    assert [r.id for r in ordered] == ["a", "c", "e", "b", "d"]
+    # The set is what makes the run "complete"; grouping must never drop a row.
+    assert sorted(r.id for r in ordered) == sorted(r.id for r in records)
+    assert len(ordered) == len(records)
+
+
+def test_decode_order_language_pays_one_switch_on_an_alternating_manifest():
+    """The public proxy manifest alternates en/ru/en/ru — the reason this mode exists."""
+    records = [_rec(f"{i}", lang) for i, lang in enumerate(["en", "ru"] * 6)]
+
+    def transitions(seq: list[Record]) -> int:
+        pairs = zip(seq, seq[1:], strict=False)
+        return sum(1 for a, b in pairs if a.metadata["language"] != b.metadata["language"])
+
+    assert transitions(_decode_sequence(records, "manifest")) == 11
+    assert transitions(_decode_sequence(records, "language")) == 1
+
+
+def test_decode_order_rejects_an_unknown_mode():
+    with pytest.raises(ValueError, match="unknown decode order"):
+        _decode_sequence([_rec("a", "en")], "alphabetical")
+
+
+def test_decode_order_is_recorded_in_the_run(tmp_path: Path):
+    artifacts = execute(
+        MOCK,
+        "perturb:seed=1",
+        out_root=tmp_path / "runs",
+        repo_root=ROOT,
+        label="order",
+        dataset_name="mock",
+        decode_order="language",
+    )
+    recorded = artifacts.run["decode_order"]
+    assert recorded["mode"] == "language"
+    assert len(recorded["sequence_sha256"]) == 64
+    # Outputs are sorted by id whatever order the decode ran in.
+    ids = [row["id"] for row in artifacts.per_utterance]
+    assert ids == sorted(ids)
+
+
+def test_decode_order_does_not_change_the_scores(tmp_path: Path):
+    """Reordering the decode must be invisible to every metric, or it is not safe."""
+    a = execute(
+        MOCK,
+        "perturb:seed=1",
+        out_root=tmp_path / "runs",
+        repo_root=ROOT,
+        label="m",
+        dataset_name="mock",
+        decode_order="manifest",
+    )
+    b = execute(
+        MOCK,
+        "perturb:seed=1",
+        out_root=tmp_path / "runs",
+        repo_root=ROOT,
+        label="l",
+        dataset_name="mock",
+        decode_order="language",
+    )
+    assert a.run["metrics"] == b.run["metrics"]
+    assert a.run["subsets"] == b.run["subsets"]
