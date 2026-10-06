@@ -1,0 +1,52 @@
+{
+  "arm": "fp32",
+  "pass": 2,
+  "started_utc": "2026-10-06T07:01:38Z",
+  "git": {
+    "sha": "bdbca28fc5748b3185162cb76f83a2f3d10ba45e",
+    "dirty": true
+  },
+  "model_dir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-fp32",
+  "files": {
+    "encoder.onnx": {
+      "bytes": 41766257,
+      "sha256": "3eed7ce424bf8339ad09233533c687e2dbd07e74ccf5027b5e7344019ea373b0"
+    },
+    "decoder.onnx": {
+      "bytes": 47233743,
+      "sha256": "d593cdb0e571f5a457ec2219af9968cbf6b0e8198e8f7839b40a8754593bf68c"
+    },
+    "joiner.onnx": {
+      "bytes": 25286330,
+      "sha256": "b9b0bcf88ac571902e69a6536223ed2d94885e981b85045410f1403d53121a63"
+    },
+    "tokens.txt": {
+      "bytes": 93939,
+      "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+    },
+    "encoder.weights": {
+      "bytes": 2435420160,
+      "sha256": "3af3f51af5f2d01dbbf5af47d42c7962a2c205f11004254bb4f2b979862f39a8"
+    }
+  },
+  "memory_before_load": {
+    "working_set_mb": 52.7,
+    "peak_working_set_mb": 60.6,
+    "private_mb": 389.2
+  },
+  "model_bytes_total": 2549800429,
+  "load_ms": 8697.9,
+  "memory_after_load": {
+    "working_set_mb": 2232.6,
+    "peak_working_set_mb": 2252.6,
+    "private_mb": 2568.1
+  },
+  "warmup_ms": 3931.7,
+  "memory_after_decode": {
+    "working_set_mb": 2733.2,
+    "peak_working_set_mb": 2735.5,
+    "private_mb": 2847.2
+  },
+  "peak_current_working_set_mb_during_decode": 2734.7,
+  "finished_utc": "2026-10-06T07:08:35Z"
+}

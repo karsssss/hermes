@@ -163,10 +163,21 @@ class BeamHyp:
 
 
 class TdtProbe:
-    def __init__(self, models_root: Path, *, num_threads: int = NUM_THREADS) -> None:
+    def __init__(
+        self,
+        models_root: Path,
+        *,
+        num_threads: int = NUM_THREADS,
+        model_dir: str = MODEL_DIR,
+        files: tuple[str, str, str] = (
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+        ),
+    ) -> None:
         import onnxruntime as ort
 
-        self.dir = Path(models_root) / MODEL_DIR
+        self.dir = Path(models_root) / model_dir
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = num_threads
         opts.inter_op_num_threads = num_threads
@@ -176,9 +187,9 @@ class TdtProbe:
                 str(self.dir / name), sess_options=opts, providers=["CPUExecutionProvider"]
             )
 
-        self.encoder = session("encoder.int8.onnx")
-        self.decoder = session("decoder.int8.onnx")
-        self.joiner = session("joiner.int8.onnx")
+        self.encoder = session(files[0])
+        self.decoder = session(files[1])
+        self.joiner = session(files[2])
         self.vocab: list[str] = []
         for line in (self.dir / "tokens.txt").read_text(encoding="utf-8").splitlines():
             piece, _, _idx = line.rpartition(" ")

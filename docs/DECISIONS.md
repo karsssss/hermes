@@ -503,3 +503,42 @@ required and not planned. Whisper, the retained fallback, was not tested and doe
 this result. Every Task 2b latency figure is non-decision-grade (resumed run, ~20% shift between
 sittings on matched content).
 
+---
+
+## D-0015 — Task 2c: Parakeet ships as the FP32 export; INT8 is the low-memory fallback
+
+**Status:** accepted · 2026-10-06 · **refines D-0013** (which named the model, not its
+representation)
+
+**Context.** Tasks 2a and 2b measured Parakeet TDT 0.6B v3 only as sherpa-onnx's dynamic-int8
+export, and Task 2b found that export numerically fragile: a 1e-7 feature perturbation flips
+transcripts, and sherpa vs a direct-ORT port of the same decoder disagreed on 33/160
+(open question #17). Task 2c ran the int8 export against its fp32 sibling (same exporter,
+same day, identical tokens) on everything else held fixed — Public Proxy v1, sherpa 1.13.8
+greedy, ORT 1.28 CPU EP, 4 threads — in ABAB fresh processes. Full write-up:
+`docs/research/T2C-precision.md`; run `20261006T055203Z-t2c-parakeet-int8-vs-fp32-01d0`.
+
+**Decision.** **Phase 1 runs Parakeet as the FP32 export** on the CPU EP, loaded once at
+service start and kept resident. The INT8 export remains a documented fallback for
+low-memory machines, not the default. Any further backend comparison uses Parakeet FP32.
+This decides the model's **representation**, not the execution provider: DirectML vs WinML
+(open question #14, D-0011) remains unresolved, and a GPU EP is neither chosen nor ruled out.
+
+**Rationale.** Paired bootstrap, 2000 resamples, seed 20260926; WER, not F-WER.
+FP32 − INT8: **overall −2.57 pp [−3.94, −1.32]** (13.29 → 10.72), English −2.02 [−3.46, −0.78],
+Russian −5.25 [−9.13, −1.34], noise −6.73, reverb −3.80, all clear of zero; worse on no slice;
+accented English −1.74 [−4.01, +0.34], unresolved. Inaudible 1-LSB dither changes 30/160 INT8
+transcripts and 8/160 FP32 (Δ −13.8 pp [−20.6, −7.5]); sherpa/ORT parity rises from 127/160
+to 159/160. Both are bit-deterministic run to run. Confidence (emitted-token prob) ties:
+AUROC 0.884 → 0.892, Δ +0.008 [−0.014, +0.030]. Cost: peak working set 996 → 2736 MB, disk
+670 → 2550 MB, load ~4.7 → ~9–12 s, decode time +7–9% (regime-matched per-utterance ratio
+1.07 [1.01, 1.15]). **Absolute Task 2c latencies are non-decision-grade** — three of four arm
+processes hit a ~5× fast system-state regime — only the regime-matched FP32/INT8 ratio is.
+
+**Consequences.** The sidecar budget becomes ~2.8 GB resident. Every Task 2a/2b Parakeet
+figure is an INT8 figure and understates the model; Whisper was also measured INT8 only, so
+its fp32 headroom is equally unmeasured. D-0014 stands unchanged on FP32. Phase 3 Rust-port
+parity testing becomes tractable (two implementations agree to 3.5e-4 nats). A better
+quantization (static int8, fp16, sensitive-layer exclusion) could recover the memory and is a
+separate measurement. All of it is proxy-set WER: **FP32 has not been measured on personal
+speech**, and the gap is re-checked on the personal set (Task 1b).

@@ -57,6 +57,12 @@ reachable only by owning a small Python TDT beam loop, and carries ~2 pp of orac
 the decoder cannot rank. SYNTHESIS §5.1's risk is retired for Parakeet: no Rust decoder in
 Phase 1. See **§ Task 2b — COMPLETE** below and `docs/research/T2B-confidence.md`.
 
+**Task 2c (Parakeet INT8 vs FP32 precision gate) is COMPLETE — FP32 PREFERRED (D-0015).**
+FP32 cuts WER 2.57 pp overall [−3.94, −1.32] (13.29 → 10.72), is worse on no slice, flips 4×
+fewer transcripts under inaudible dither, and agrees with a direct-ORT decode on 159/160 (INT8
+127/160). Confidence ties. Cost: +1.74 GB resident (2.74 GB peak), 3.8× disk, ~2× load,
++7–9% decode time. See **§ Task 2c — COMPLETE** below and `docs/research/T2C-precision.md`.
+
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
 ship.
@@ -66,7 +72,7 @@ ship.
 1. `CLAUDE.md` — invariants and vocabulary
 2. **`docs/SYNTHESIS.md`** — the decision document; supersedes `ARCHITECTURE.md` where they
    disagree
-3. `docs/DECISIONS.md` — D-0001…D-0014
+3. `docs/DECISIONS.md` — D-0001…D-0015
 4. `docs/ROADMAP.md` — phases and checkpoints (Phase 1 scope is narrowed by SYNTHESIS §19)
 5. `docs/research/R1…R9` — evidence, only as needed
 
@@ -365,6 +371,55 @@ sittings. Within-row ratios are stable and usable; absolute RTF and latency are 
   Rust task" claim superseded), §9's confidence source amended, §15 risks 1–2 updated, and
   a note added to C5. DirectML vs WinML is left unresolved.
 
+## Task 2c — COMPLETE (2026-10-06) — FP32 PREFERRED
+
+Task 2c asked whether Parakeet TDT v3 FP32 earns its memory/runtime cost over INT8 for
+Phase 1. **Answered: yes. Recorded as D-0015.** Full write-up: `docs/research/T2C-precision.md`.
+
+| | |
+|---|---|
+| Run directory | `eval/runs/20261006T055203Z-t2c-parakeet-int8-vs-fp32-01d0` — `run.json`, per-arm `{arm}-p{n}.json` + `-sherpa.jsonl`, pass-1 `-perturb.jsonl` / `-probe.jsonl`, `analysis.json` |
+| FP32 model | HF `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3` @ `1a468a35` → `models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-fp32/` (2.55 GB, external-data encoder; hashes match HF LFS) |
+| Design | ABAB fresh processes (int8, fp32, int8, fp32), identical audio / features / decoder / CPU EP / 4 threads / scoring |
+| Reproduction | INT8 WER 13.294% and INT8 sherpa/ORT parity 127/160 — Tasks 2a/2b exactly |
+
+```
+uv run --group asr python -m hermes_eval.t2c collect    # ~95 min
+uv run python -m hermes_eval.t2c analyze <run-dir>
+```
+
+| | INT8 | FP32 |
+|---|---:|---:|
+| WER overall (Δ [CI]) | 13.29 | **10.72** (−2.57 [−3.94, −1.32]) |
+| WER en / ru | 12.79 / 15.75 | 10.77 / 10.50 (both CIs clear) |
+| WER accented_en | 18.74 | 16.99 (−1.74 [−4.01, +0.34], unresolved) |
+| WER noise / reverb | 18.42 / 12.57 | 11.70 / 8.77 (both CIs clear) |
+| repeated-run agreement | 160/160 bit-identical | 160/160 bit-identical |
+| sherpa vs direct-ORT text identical | 127/160 | **159/160** |
+| changed by inaudible 1-LSB dither | 30/160 | **8/160** (Δ −13.8 pp [−20.6, −7.5]) |
+| changed by 5 ms frame shift | 45/160 | 34/160 (not resolved) |
+| confidence AUROC (emitted-token) | 0.884 | 0.892 (Δ +0.008 [−0.014, +0.030]) |
+| peak working set | **996 MB** | 2736 MB |
+| model on disk / load | **670 MB / ~4.7 s** | 2550 MB / ~9–12 s |
+| decode time, per-utt ratio | — | ×1.07 [1.01, 1.15] |
+
+**Timing finding:** three of four arm processes hit contiguous stretches decoding ~5× faster
+than the same utterances did in Task 2a, in both arms — a system-state regime (likely P/E-core
+placement), not a model property. Ratios are computed on regime-matched rows; absolute
+latencies are non-decision-grade. That scheduling swing dwarfs the 7% precision cost, which
+raises the value of Task 2 item 5 (thread sweep).
+
+**Phase 1 implication:** ship Parakeet FP32 on the CPU EP, sidecar budget ~2.8 GB, load once
+at start. All Task 2a/2b Parakeet figures are INT8 and understate the model; the backend
+decision must use FP32 (and Whisper's fp32 headroom is likewise unmeasured). **INT8 remains
+the documented low-memory fallback.** D-0014's confidence / N-best design is unchanged.
+DirectML vs WinML (open question #14) remains unresolved — this task chose a representation,
+not an execution provider. **FP32 has not been measured on personal speech**; all of the
+above is proxy-set WER.
+
+Harness changes (uncommitted): `src/hermes_eval/t2c.py` (new); `TdtProbe` takes `model_dir`
+and `files` (defaults unchanged).
+
 ## Next steps — Phase 0
 
 Phase 0 is a **throwaway Python spike, ~1 week** (D-0006). Its purpose is no longer vague:
@@ -435,6 +490,8 @@ order:
    API; N-best via a small owned Python loop. Exit criterion met. Untested for Whisper.
 2. fp32 vs int8 WER on our own audio, for whichever backend we test. **No measured pair exists
    anywhere** — circulating claims trace to content farms.
+   **Answered for Parakeet on the proxy set, 2026-10-06 (Task 2c, D-0015):** FP32 −2.57 pp
+   [−3.94, −1.32]; FP32 preferred. Re-check on the personal set; untested for Whisper.
 3. **Parakeet TDT v3 vs Whisper large-v3-turbo on the personal set: F-WER, E-WER,
    latency.** The two Task 2a survivors; Nemotron was eliminated 2026-09-28. This is the
    measurement that picks the production backend, and the proxy set cannot substitute for
@@ -546,6 +603,10 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
     decode will not agree byte-for-byte (a hazard for the Phase 3 Rust port's parity
     testing), and folds into Task 2 item 2 (fp32 vs int8). Testing it needs the fp32 export,
     which is a model addition and outside Task 2b's scope.
+    **CLOSED 2026-10-06 by Task 2c (D-0015): confirmed, and fp32 is better.** FP32 parity with
+    a direct-ORT decode is 159/160 (int8 127/160), inaudible dither flips 8/160 vs 30/160, and
+    WER drops 2.57 pp. Both are bit-deterministic run to run — the problem was input
+    sensitivity, not nondeterminism.
 
 ## Decisions (full text in `DECISIONS.md`)
 
@@ -563,6 +624,7 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 - **D-0012** Public proxy eval set stands in for the personal set, and never replaces it
 - **D-0013** Task 2a eliminates Nemotron; Parakeet TDT v3 is the front-runner, Whisper the fallback
 - **D-0014** Task 2b keeps the confidence / N-best contract; N-best from an owned Python decode loop
+- **D-0015** Task 2c: Parakeet ships as the FP32 export; INT8 is the low-memory fallback
 
 ## Standing instructions
 
@@ -574,6 +636,13 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
   `eval/runs/20261006T033722Z-t2b-parakeet-confidence-27dc` (`run.json`, `raw.jsonl`,
   `analysis.json`, `supplement.json`). Rows 1–91 record `013217b` dirty — the instrument
   was then uncommitted; it was committed unchanged in `87ec846`, where rows 92–160 ran.
+- **Task 2c is committed** (`phase0: prefer Parakeet FP32 over INT8`): the write-up, D-0015,
+  `t2c.py`, the `TdtProbe` model-dir parameters, and the run
+  `eval/runs/20261006T055203Z-t2c-parakeet-int8-vs-fp32-01d0` (`run.json`, the four per-arm
+  `{arm}-p{n}.json` + `-sherpa.jsonl`, the pass-1 `-perturb.jsonl` / `-probe.jsonl`,
+  `analysis.json` — ~1.8 MB, ~95 min of compute). Collected at `bdbca28` dirty (`t2c.py` then
+  uncommitted); the committed `t2c.py` reproduces `analysis.json` byte-for-byte. Model files
+  stay in `models/` (gitignored).
 - **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
   `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
   `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and

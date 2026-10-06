@@ -1,0 +1,66 @@
+{
+  "run_id": "20261006T055203Z-t2c-parakeet-int8-vs-fp32-01d0",
+  "task": "Phase 0 Task 2c - Parakeet INT8 vs FP32 decision gate",
+  "started_utc": "2026-10-06T05:52:03Z",
+  "git": {
+    "sha": "bdbca28fc5748b3185162cb76f83a2f3d10ba45e",
+    "dirty": true
+  },
+  "hardware": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "os_version": "10.0.26200",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "logical_cores": 12,
+    "total_ram_gb": 15.73,
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU, 566.24, 6141 MiB"
+  },
+  "software": {
+    "harness_version": "0.1.0",
+    "python": "3.11.14",
+    "python_implementation": "CPython",
+    "omp_num_threads": null,
+    "sherpa_onnx": "1.13.8",
+    "onnxruntime": "1.28.0"
+  },
+  "manifest": {
+    "path": "eval/datasets/public-proxy-v1/manifest.jsonl",
+    "sha256": "2b3a46ede2700f30479a218abcdf0f3d55d12c2610dfeb82575e0595c9d7053e",
+    "n": 160
+  },
+  "config": {
+    "threads": 4,
+    "provider": "cpu",
+    "decoding_method": "greedy_search",
+    "sequence": [
+      "int8-p1",
+      "fp32-p1",
+      "int8-p2",
+      "fp32-p2"
+    ],
+    "perturbations": [
+      "dither",
+      "shift5ms"
+    ],
+    "arms": {
+      "int8": {
+        "precision": "int8",
+        "model_dir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+        "encoder": "encoder.int8.onnx",
+        "decoder": "decoder.int8.onnx",
+        "joiner": "joiner.int8.onnx",
+        "extra_files": []
+      },
+      "fp32": {
+        "precision": "fp32",
+        "model_dir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-fp32",
+        "encoder": "encoder.onnx",
+        "decoder": "decoder.onnx",
+        "joiner": "joiner.onnx",
+        "extra_files": [
+          "encoder.weights"
+        ]
+      }
+    }
+  }
+}
