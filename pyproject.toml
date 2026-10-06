@@ -21,7 +21,15 @@ data = ["numpy>=1.26", "soundfile>=0.12", "pyarrow>=15", "huggingface-hub>=0.25"
 # C:\Windows\System32\onnxruntime.dll (1.17, Windows ML), which is too old — sherpa 1.13.8
 # needs ORT API 28. Installing ORT 1.28 and putting its DLL next to _sherpa_onnx.pyd makes
 # the extension's own directory win the search. See docs/research/T2A-screening.md.
-asr = ["sherpa-onnx==1.13.8", "onnxruntime==1.28.0", "numpy>=1.26", "soundfile>=0.12"]
+# kaldi-native-fbank is pinned to the exact version sherpa-onnx 1.13.8 compiles in
+# (cmake/kaldi-native-fbank.cmake), so the Task 2b probe's features are sherpa's features.
+asr = [
+  "sherpa-onnx==1.13.8",
+  "onnxruntime==1.28.0",
+  "numpy>=1.26",
+  "soundfile>=0.12",
+  "kaldi-native-fbank==1.22.3",
+]
 
 [build-system]
 requires = ["hatchling"]
