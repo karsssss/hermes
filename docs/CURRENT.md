@@ -12,7 +12,7 @@ decisions (D-0007…D-0011) were recorded, and six corrections were applied to
 `ARCHITECTURE.md`, `BENCHMARKS.md` and `CLAUDE.md`.
 
 **Phase 0 has started. The evaluation harness exists and passes its own tests.**
-`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 122 tests,
+`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 139 tests,
 ruff and pyright clean. Zero runtime dependencies — the scoring path is pure stdlib on
 purpose, because a published benchmark cannot blame its numbers on a third-party WER
 package.
@@ -50,12 +50,12 @@ leads every axis this set can measure. **No production backend has been chosen**
 needs Task 1b. Full detail in **§ Task 2a — COMPLETE** below and in
 `docs/research/T2A-screening.md`.
 
-**Task 2b (Parakeet confidence / N-best architecture gate) is INTERRUPTED at 91/160.** The
-collection was killed by Claude Code's memory-pressure reaper while the session was idle —
-not a failure of the run. Everything collected is on disk and resumable; nothing has been
-recomputed or re-run. The static half of the question (what the export and sherpa-onnx
-expose) is **settled**; the empirical half (how good each signal is) has **PRELIMINARY**
-numbers only. **No verdict has been issued.** See **§ Task 2b — INTERRUPTED** below.
+**Task 2b (Parakeet confidence / N-best architecture gate) is COMPLETE — verdict A, KEEP
+CURRENT CONTRACT (D-0014).** 160/160 rows. sherpa's public emitted-token probability is as
+good a word confidence as anything the full distribution offers (AUROC 0.884); N-best is
+reachable only by owning a small Python TDT beam loop, and carries ~2 pp of oracle headroom
+the decoder cannot rank. SYNTHESIS §5.1's risk is retired for Parakeet: no Rust decoder in
+Phase 1. See **§ Task 2b — COMPLETE** below and `docs/research/T2B-confidence.md`.
 
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
@@ -66,7 +66,7 @@ ship.
 1. `CLAUDE.md` — invariants and vocabulary
 2. **`docs/SYNTHESIS.md`** — the decision document; supersedes `ARCHITECTURE.md` where they
    disagree
-3. `docs/DECISIONS.md` — D-0001…D-0013
+3. `docs/DECISIONS.md` — D-0001…D-0014
 4. `docs/ROADMAP.md` — phases and checkpoints (Phase 1 scope is narrowed by SYNTHESIS §19)
 5. `docs/research/R1…R9` — evidence, only as needed
 
@@ -216,7 +216,10 @@ and were **not** re-run.
   log-prob of the **emitted** token, not the full per-step distribution that R8's entropy
   method needs, so it narrows open question #1 without closing it — and it is reachable
   through a decode loop somebody else already wrote, which is evidence about §5.1's fallback
-  plan. N-best would come from `decoding_method="modified_beam_search"`, untested. With the
+  plan. N-best would come from `decoding_method="modified_beam_search"`, untested.
+  **[Answered by Task 2b, 2026-10-06: the emitted-token prob ties the best
+  full-distribution signal on Parakeet; sherpa's beam returns one hypothesis, so N-best
+  needs an owned loop — D-0014.]** With the
   shortlist down to two, **Parakeet is the one to test first**: it is the only survivor whose
   speed makes it a plausible default, and it is a transducer, which is the case §5.1's
   fallback plan was written about.
@@ -263,147 +266,104 @@ and were **not** re-run.
   for Task 2 item 3, not a decision.
 - **No re-run of Parakeet or Nemotron**, no added models, no added datasets, no fine-tuning.
 
-## Task 2b — INTERRUPTED at 91/160 (2026-10-06)
+## Task 2b — COMPLETE (2026-10-06) — verdict A, keep the contract
 
-Task 2b asks whether the ONNX / sherpa-onnx / ORT path can supply useful token confidences
-and N-best **without Hermes owning the transducer decode loop** (SYNTHESIS §5.1, D-0011's
-Phase 0 exit criterion, open question #1). Model: Parakeet TDT 0.6B v3 int8 only. No models,
-datasets or fine-tuning added. **No verdict yet — it waits for the full 160.**
+Task 2b asked whether the ONNX / sherpa-onnx / ORT path can supply useful token confidences
+and N-best for Parakeet TDT 0.6B v3 int8 **without Hermes owning a large decoder** (SYNTHESIS
+§5.1, D-0011's Phase 0 exit criterion, open question #1). **Answered: yes. Verdict A — KEEP
+CURRENT CONTRACT. Recorded as D-0014.** Full write-up: `docs/research/T2B-confidence.md`.
 
-### Run state — verified 2026-10-06
+### Run
 
-| Check | Result |
+| | |
 |---|---|
-| Run directory | `eval/runs/20261006T033722Z-t2b-parakeet-confidence-27dc` (`run.json`, `raw.jsonl`) |
-| Rows present | **91 valid, 91 unique**, every row complete, exactly manifest rows 1–91 in order |
-| Remaining | 69, starting at `pp1-librispeech_test_clean-000101` |
-| Manifest identity | sha256 `2b3a46ede2700f30479a218abcdf0f3d55d12c2610dfeb82575e0595c9d7053e` — matches `run.json`, matches Task 2a, file untouched since `a2bbbf3` |
-| Model identity | combined sha256 `d0a44f3cb58043af…` — identical to the Task 2a Parakeet run |
-| Code that produced the rows | `t2b.py` / `tdt_probe.py` last modified before the run started and not changed in any way that affects a row since; `run.json` records `013217b`, `dirty: true` (the instrument was uncommitted then) |
-| Bugged earlier run | `…-t2b-parakeet-confidence-9374` (entropy-normalization bug, below) **deleted**; not in `eval/runs/` |
-| Resume | skips completed ids before any audio is read — completed rows are never recomputed; verified on a byte copy of the real `raw.jsonl` (91 ids, file unmodified). Hardened at this checkpoint: a torn trailing line from a mid-write kill is cut before appending, duplicate ids refuse to resume, and each resume is appended to `run.json["resumes"]` |
-
-**Resume command** (≈30 min, ~25 s per utterance; close memory-heavy apps first):
+| Run directory | `eval/runs/20261006T033722Z-t2b-parakeet-confidence-27dc` — `run.json`, `raw.jsonl`, `analysis.json` (pre-registered), `supplement.json` (post-hoc) |
+| Rows | **160/160**, unique, manifest order, no truncation — rows 1–91 at `013217b` (dirty), rows 92–160 resumed at `87ec846` (clean), resume recorded in `run.json["resumes"]` |
+| Manifest / model | sha256 `2b3a46ed…d7053e` / `d0a44f3c…` — re-verified before and after the resume, identical to Task 2a |
+| Reproduction | sherpa greedy WER 13.294% — Task 2a's Parakeet 13.2943% to every reported digit |
 
 ```
-uv run --group asr python -m hermes_eval.t2b collect --resume eval/runs/20261006T033722Z-t2b-parakeet-confidence-27dc
-uv run python -m hermes_eval.t2b analyze eval/runs/20261006T033722Z-t2b-parakeet-confidence-27dc
+uv run --group asr python -m hermes_eval.t2b collect [--resume <run-dir>]   # ~45 min
+uv run python -m hermes_eval.t2b analyze    <run-dir>   # ~10 min at 2000 resamples
+uv run python -m hermes_eval.t2b supplement <run-dir>   # ~5 min
 ```
 
-If the reaper keeps firing, start Claude Code with `CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1`.
-`analyze` is stdlib-only and takes ~4 min at 2000 resamples.
+**Committed** with the write-up, force-added past the `eval/runs/` ignore as Task 2a's were:
+`run.json`, `raw.jsonl` (3.3 MB — the raw measurements every number is computed from),
+`analysis.json` and `supplement.json`. That is ~45 min of compute; the rest re-derives.
 
-**The run itself is not committed** (`eval/runs/` is gitignored; an incomplete run is not a
-record). It will be force-added with the T2B write-up once complete, as Task 2a's were.
+### Results
 
-**Coverage of the 91 rows is uneven:** all 50 accented_en, all 20 Russian (ru_clean,
-ru_command, ru_farfield), 10 noise, 10 reverb — and **1 general_en**. General English is
-effectively unmeasured until the run is resumed.
+**Confidence.** AUROC for correct vs incorrect words, utterance-bootstrap 95% CI, n=160, 197
+scorable errors:
 
-### The instrument (committed at this checkpoint)
+| signal | reachable via | AUROC | Δ vs emitted-token prob |
+|---|---|---:|---:|
+| **sherpa native `ys_log_probs` (emitted-token prob)** | **sherpa API** | **0.884 [0.855, 0.908]** | — |
+| Gibbs entropy | full distribution | 0.883 | +0.004 [+0.001, +0.008] — resolved, negligible |
+| top-1/top-2 margin | full distribution | 0.866 | −0.013 [−0.018, −0.009] |
+| Tsallis-1/3 = Rényi-1/3 (R8 §D's best) | full distribution | 0.841 | **−0.038 [−0.063, −0.016]** |
+| TDT duration head | full distribution | 0.69 | −0.19 |
 
-- `src/hermes_eval/tdt_probe.py` — **a measurement instrument, not a shipping decoder.** A
-  line-for-line Python/ORT port of sherpa-onnx v1.13.8's TDT greedy and modified-beam
-  decoders, recording what sherpa computes and discards: the full per-step token and
-  duration distributions, top-5 alternatives per emitted token, and every beam hypothesis
-  with its score. Features via `kaldi-native-fbank==1.22.3`, the exact version sherpa 1.13.8
-  compiles in.
-- `src/hermes_eval/confidence_eval.py` — stdlib-only scoring: WER-unit labelling, AUROC, AP,
-  recall@k, ECE, utterance-level paired bootstrap (2000 resamples, seed 20260926).
-- `src/hermes_eval/t2b.py` — `collect` (two sherpa arms + the probe) and `analyze`.
-- `pyproject.toml` — the `asr` group gains `kaldi-native-fbank==1.22.3`.
-- `tests/test_confidence_eval.py` — metrics, labelling, measures, resume.
+Same order in every slice. accented_en (94 errors) is the only well-measured slice and
+ties at the top (0.856–0.863). **general_en (11 errors, CI ~0.40 wide) is uninformative**;
+russian, noise and reverb (~30 errors each) show the signal works but cannot rank the
+near-ties. Highlighting the lowest 10% / 20% of words catches 56% / 74% of scorable
+errors. Word P = Π token p has ECE 0.022 (mildly overconfident on accented). **~41% of word
+errors are deletions, invisible to any word confidence.** Best utterance score: mean
+emitted-token log-prob, also sherpa-reachable (ρ 0.68 vs utterance WER).
 
-### Static findings — ESTABLISHED (independent of the interrupted run)
+**N-best** (owned beam = sherpa's algorithm, all hypotheses kept): **oracle WER −1.99 pp
+[−2.86, −1.27] at K=4** (−3.05 pp on accented), but the decoder cannot rank the list —
+beam-4 top-1 vs greedy −0.16 pp [−0.89, +0.53], and beam-8 top-1 is *worse* (+1.01 pp).
+A lower-ranked hypothesis beats top-1 in 34/160 utterances; an error-free one is present
+but not first in 7/100. Only ~2 of 4 hypotheses are lexically distinct. Python loop cost:
+~3.6× greedy at K=4.
 
-1. **The export exposes everything.** The joiner outputs raw logits `[…, 8198]` = 8193 tokens
-   (incl. blank, id 8192) + **5 TDT duration logits** (0–4 frames), every step. The full
-   per-step token distribution *and* the duration distribution are in the artifact.
-   Encoder `audio_signal [B,128,T]` → `[B,1024,T']`; the decoder is a 2-layer 640-d LSTM
-   prediction net with explicit state in and out. Nothing is hidden by the ONNX export.
-2. **sherpa-onnx 1.13.8 exposes, offline, through both Python and the C API**
-   (`SherpaOnnxOfflineRecognizerResult`): `tokens`, `timestamps`, `durations`, and
-   `ys_log_probs` = log-softmax over the token head (incl. blank, excl. durations) of the
-   **emitted token only**, i.e. max-prob confidence. Blank steps' probabilities and the
-   duration distribution are computed and discarded.
-3. **No full distribution, no sequence score, no N-best — through any released API.**
-   R8's PR #2897 ("Vocabulary Log Probabilities API") was **closed unmerged**; 1.13.8 is the
-   latest release (2026-09-10). `T2A-screening.md`'s line "on the installed 1.13.8 wheel, it
-   is there" conflated it with `ys_log_probs` and is wrong; to be corrected in the T2B
-   write-up.
-4. **N-best is computed and thrown away.** `modified_beam_search` genuinely runs for TDT
-   (differed from greedy on 15/40 sampled utterances) and keeps `max_active_paths`
-   hypotheses, but `OfflineTransducerDecoderResult` holds one hypothesis and the decoder
-   returns only the best. Its TDT beam also takes the argmax duration (no duration
-   branching), never merges identical prefixes (so the internal list carries
-   alignment-only duplicates), and compares scores of hypotheses sitting at different
-   frames. Getting N-best needs either a sherpa C++ patch or owning the loop.
-5. **Owning the loop is small.** The greedy TDT loop is ~60 lines over three ORT sessions;
-   the Python port costs **~0.06× real time** on top of the encoder (beam-4 ~0.23×, beam-8
-   ~0.37×), measured on 91 rows. Phase 1 decodes in the Python sidecar (SYNTHESIS §4), so it
-   would not be a Rust task in Phase 1.
-6. **The int8 export is numerically chaotic — new, see open question #17.** A 1e-7 relative
-   perturbation of the input features changed the transcript; a single-ULP change to one
-   feature value did not. The probe and sherpa run the same algorithm on features that differ
-   only in float32 reduction order (numpy vs Eigen), and on 91 rows: greedy text identical on
-   **68/91**, beam-4 best identical on 57/91; on identical texts the emitted-token log-prob
-   differs by median 0.0003, p95 0.059, max 0.75 nats. WER is unbiased by it (sherpa 19.08%,
-   probe 18.81%). Bit-parity with sherpa is therefore **unattainable by porting**, and the
-   comparison is designed around that: every signal is compared on the *same* (probe)
-   hypothesis, and sherpa's native signal is scored separately on its own hypothesis.
+**Parity.** Probe vs sherpa greedy text identical on 127/160; WER Δ −0.31 pp
+[−0.71, +0.11]; emitted log-prob |Δ| median 0.00017 nats. First divergences sit at a
+median top-1/top-2 margin of 0.13 nats (88% under 1 nat, vs 8% of all steps) — the
+recorded int8 numerical sensitivity, not an algorithmic difference. It moves neither
+WER, nor confidence, nor N-best.
 
-**A bug of ours, fixed before the current run.** NeMo's exp-normalized Tsallis-1/3 underflows
-over 8193 classes (H_max ≈ 609, so a *confident* step scores ≈e⁻⁶⁰), and the first
-collection rounded signals to 6 decimals, collapsing most words into ties. The current run
-stores linear-normalized entropies (rank-identical under min aggregation) and **no rounding
-on any signal**. The bugged run was discarded, never analyzed in full.
+**Timing: non-decision-grade.** On matched content (ratio to Task 2a's per-utterance
+latency), rows 92–160 ran ~20% *faster* than rows 1–91 (p50 0.79 vs 0.99; noise and reverb
+both 1.00 → 0.81). No paging slowdown, but system state moved absolute timings between
+sittings. Within-row ratios are stable and usable; absolute RTF and latency are not.
 
-### PRELIMINARY — 91/160 rows, NOT conclusions
+### What Phase 1 can rely on
 
-**Nothing in this subsection may be quoted as a Task 2b result.** Coverage is uneven
-(general_en n=1) and the full run may move any of it. Unit = `basic`-normalized hypothesis
-word (the WER unit); AUROC = separation of correct from incorrect words; 95% CI by
-utterance-level bootstrap; Δ is paired against `maxprob_min`, the signal sherpa already
-exposes. Raw output: scratch analysis of a copy, not written into the run directory.
+- **`FinalTranscript.text`** — yes; greedy (sherpa or owned, equivalent). Not beam.
+- **`tokens[].confidence`** — yes, emitted-token prob via sherpa's API, **for highlighting
+  only**. Replaces D-0009's "entropy-based".
+- **`nbest[]`** — yes, via the owned Python beam, K ≤ 4, deduplicated, only when
+  `decode_params.beam > 1`. No Phase 1 consumer.
+- **sequence score** — yes, rank-only; never a probability.
+- **timestamps** — yes in shape (sherpa `timestamps` + `durations`); accuracy unmeasured.
+- **`PartialTranscript`** — not established; Parakeet here is offline, partials would be
+  re-decodes, and stability is unmeasured.
 
-| signal (word = min over its tokens) | needs | overall AUROC | accented_en | russian | noise | reverb |
-|---|---|---:|---:|---:|---:|---:|
-| sherpa native `ys_log_probs`, its own hyp | sherpa API | 0.863 [0.826, 0.899] | 0.863 | 0.984 | 0.856 | 0.834 |
-| `maxprob_min` (same quantity, probe hyp) | sherpa API | 0.859 [0.822, 0.893] | 0.856 | 0.981 | 0.847 | 0.840 |
-| `gibbs_min` (Shannon entropy) | distribution | 0.861, Δ +0.002 [−0.003, +0.007] | 0.856 | 0.991 | 0.855 | 0.842 |
-| `tsallis_min` α=1/3 (R8 §D's best) | distribution | 0.822, Δ **−0.036 [−0.070, −0.009]** | 0.825 | 0.966 | 0.780 | 0.727 |
-| `margin_min` (top1 − top2) | distribution | 0.845, Δ −0.014 [−0.020, −0.007] | 0.845 | 0.959 | 0.821 | 0.828 |
-| blank-inclusive Tsallis | distribution | 0.806, Δ −0.052 | 0.811 | 0.956 | 0.755 | 0.710 |
-| TDT duration confidence | distribution | 0.664, Δ −0.194 | 0.627 | 0.739 | 0.680 | 0.768 |
+**A small custom Python decoder is justified for N-best and biasing, not for confidence.**
 
-(Rényi-1/3 is rank-identical to Tsallis-1/3 under min aggregation — both are monotone in
-Σp^α — so it is not listed separately. Russian has only 7 erroneous words in 98; its
-AUROCs are high and wide.)
+### Harness changes made for Task 2b (committed)
 
-Provisional reading: on this model, **the emitted-token probability sherpa already returns
-separates errors as well as anything the full distribution offers**; Gibbs entropy ties it;
-Tsallis-1/3 — R8 §D's best LibriSpeech configuration — is *worse*, CI clear of zero overall.
-Flagging the lowest-confidence 10% of words catches ~51% of errors overall (accented 49%).
-The product of token probabilities is near-calibrated in aggregate as P(word correct)
-(ECE 0.038; mean P 0.897 vs accuracy 0.892). Deletions (128 overall) are invisible to any
-word-level confidence by construction.
+- `src/hermes_eval/tdt_probe.py` — the measurement instrument (committed at `87ec846`):
+  a Python/ORT port of sherpa 1.13.8's TDT greedy and modified-beam decoders that keeps
+  what sherpa discards. **Not a shipping decoder.**
+- `src/hermes_eval/t2b.py` — `collect`, `analyze`; new since `87ec846`: unit construction
+  shared via `_build_units` (verified to reproduce `analysis.json` exactly), and a
+  `supplement` subcommand for the post-hoc measures.
+- `src/hermes_eval/confidence_eval.py` — new `bootstrap_ap`.
+- `tests/test_confidence_eval.py` — tests for `bootstrap_ap` and the divergence locus.
 
-N-best (probe beam = sherpa's algorithm with all hypotheses kept), PRELIMINARY: beam-4 best
-vs greedy WER Δ −0.14 pp [−1.32, +1.07] — noise; **oracle WER 16.31% vs greedy 18.81%** —
-the alternatives carry real headroom; 69% of utterances have a lexically distinct
-alternative at K=4. Beam-8's best is *worse* than greedy (+2.0 pp [−0.06, +4.53]),
-consistent with the cross-frame score comparison in static finding 4. Sequence level: mean
-emitted-token log-prob (sherpa-reachable) tracks utterance WER best (Spearman 0.70; AUROC
-0.82 for "has any error").
+### Corrections applied
 
-### What is still owed
-
-Resume to 160, re-analyze, write `docs/research/T2B-confidence-nbest.md` (including the
-T2A correction above), then issue exactly one verdict — A keep / B weaken / C architecture
-change — naming which `FinalTranscript` fields are supportable. DECISIONS.md changes only if
-the full evidence changes an existing assumption; D-0009's "entropy-based word confidence"
-is the one these preliminary numbers put in question. **No verdict has been drawn from the
-preliminary numbers.**
+- `T2A-screening.md`'s "on the installed 1.13.8 wheel, it is there" — struck and corrected.
+- D-0009 amended by D-0014 (emitted-token probability, not entropy). D-0011's exit
+  criterion marked met.
+- SYNTHESIS reconciled with D-0014: §5.1 marked resolved for Parakeet (the "substantial
+  Rust task" claim superseded), §9's confidence source amended, §15 risks 1–2 updated, and
+  a note added to C5. DirectML vs WinML is left unresolved.
 
 ## Next steps — Phase 0
 
@@ -470,9 +430,9 @@ one. Different denominators, not a bug.
 `hermes-eval`; none of them is worth running before Task 1b exists. In rough priority
 order:
 
-1. **Can per-token logits be reached from an ONNX export?** (`SYNTHESIS.md` §5.1.) This is an
-   explicit Phase 0 exit criterion. If no, Phase 1 scope changes materially — we would have to
-   run the transducer decode loop ourselves.
+1. ~~**Can per-token logits be reached from an ONNX export?** (`SYNTHESIS.md` §5.1.)~~
+   **Answered for Parakeet, 2026-10-06 (Task 2b, D-0014):** yes. Confidence via sherpa's
+   API; N-best via a small owned Python loop. Exit criterion met. Untested for Whisper.
 2. fp32 vs int8 WER on our own audio, for whichever backend we test. **No measured pair exists
    anywhere** — circulating claims trace to content farms.
 3. **Parakeet TDT v3 vs Whisper large-v3-turbo on the personal set: F-WER, E-WER,
@@ -481,8 +441,9 @@ order:
    it — it cannot compute either headline metric.
 4. int8-vs-fp32 joiner emission *timestamp* drift (WER is insensitive to this failure mode).
 5. Thread-count sweep on the P/E-core split — `-t 4/6/8/12`.
-6. Confidence signal quality on **accented and code-switched** speech — nobody has measured
-   this, and it is the gap that matters most for our user.
+6. Confidence signal quality on **accented and code-switched** speech — the gap that
+   matters most for our user. *Accented English measured on the proxy set by Task 2b
+   (AUROC 0.863); code-switched speech and the user's own voice still need Task 1b.*
 7. Process-boundary (IPC + serialization) latency against the 700 ms p95 budget.
 8. Whether biasing actually moves E-WER without raising false insertions on a no-bias-term
    control set.
@@ -509,10 +470,16 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
    whether N-best comes out of `modified_beam_search`. Both are cheap to test next.
    **Static half answered 2026-10-06 (Task 2b):** the full distribution is in the export
    but not reachable through any released sherpa API; N-best is computed by
-   `modified_beam_search` and discarded. Whether that matters is the empirical half,
-   interrupted at 91/160 — see § Task 2b. **Verdict pending.**
+   `modified_beam_search` and discarded.
+   **CLOSED 2026-10-06 by Task 2b — verdict A, D-0014.** For Parakeet: token confidence via
+   sherpa's API (emitted-token prob, AUROC 0.884, no full-distribution signal better by more
+   than 0.005); N-best via a small Hermes-owned Python beam loop. No Rust decoder needed in
+   Phase 1.
 2. **Is the confidence signal usable on accented/code-switched speech?** Every published
    number is LibriSpeech clean read speech. Our user is neither.
+   **Half-answered 2026-10-06 (Task 2b):** on accented English (EdAcc, 94 errors) Parakeet's
+   emitted-token prob reaches AUROC 0.863 [0.815, 0.910], ECE 0.037, mildly overconfident.
+   Code-switched speech and the user's own voice remain unmeasured — Task 1b.
 3. **CUDA/cuDNN redistribution** — needs a direct EULA read before any CUDA-in-installer work.
    DirectML is the default until then — but see #14: DirectML's own status has changed.
 4. **universal-ctags is GPL-2.0-or-later** — legal read before bundling the binary. Subprocess
@@ -571,8 +538,9 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 
 17. **How unstable is the int8 Parakeet export, and is fp32 better?** Raised 2026-10-06 by
     Task 2b. A 1e-7 relative perturbation of the features flips the transcript; float32
-    reduction-order differences alone changed the greedy text on 23 of 91 utterances, with
-    no WER bias. Hypothesis, untested: dynamic int8 activation quantization turns sub-ULP
+    reduction-order differences alone changed the greedy text on 33 of 160 utterances, with
+    no WER bias (Δ −0.31 pp [−0.71, +0.11]); first divergences sit at near-tie margins
+    (median 0.13 nats). Hypothesis, untested: dynamic int8 activation quantization turns sub-ULP
     input noise into rounding flips that propagate through 24 encoder layers. It puts a
     noise floor under any confidence value, means two correct implementations of the same
     decode will not agree byte-for-byte (a hazard for the Phase 3 Rust port's parity
@@ -594,12 +562,18 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 - **D-0011** ONNX Runtime is the substrate; the ASR model is decided by measurement
 - **D-0012** Public proxy eval set stands in for the personal set, and never replaces it
 - **D-0013** Task 2a eliminates Nemotron; Parakeet TDT v3 is the front-runner, Whisper the fallback
+- **D-0014** Task 2b keeps the confidence / N-best contract; N-best from an owned Python decode loop
 
 ## Standing instructions
 
 - **Commit only on request.** Task 2a is committed in full as of 2026-10-05: the
   one-resident-recognizer support, `--decode-order`, their tests, the write-ups, D-0013 and
   the SYNTHESIS §5/§11 corrections.
+- **Task 2b is committed** (`phase0: characterize Parakeet confidence and N-best`): the
+  write-up, D-0014, the SYNTHESIS / T2A reconciliation, `supplement`, and the run
+  `eval/runs/20261006T033722Z-t2b-parakeet-confidence-27dc` (`run.json`, `raw.jsonl`,
+  `analysis.json`, `supplement.json`). Rows 1–91 record `013217b` dirty — the instrument
+  was then uncommitted; it was committed unchanged in `87ec846`, where rows 92–160 ran.
 - **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
   `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
   `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and

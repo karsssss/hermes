@@ -242,7 +242,8 @@ invention and ships with its own eval plan, not as a known-good pattern.
 
 ## D-0009 — No LLM correction pass in Phase 1; confidence highlighting instead
 
-**Status:** accepted · 2026-09-26
+**Status:** accepted · 2026-09-26 · **"entropy-based" amended by D-0014**: the shipped word
+confidence is the emitted-token probability; everything else stands
 
 **Context.** `ARCHITECTURE.md` §5.5 specified a constrained LLM correction pass, budgeted at
 60 ms p50 / 150 ms p95. R8 produced two independent findings, either sufficient alone. First,
@@ -324,7 +325,8 @@ undo-rate data can calibrate them, and none exists yet.
 ## D-0011 — ONNX Runtime is the inference substrate; the model is decided by measurement
 
 **Status:** accepted · 2026-09-26 · **its model hypothesis is superseded by D-0013**; the
-substrate decision stands; the DirectML default is under review (open question #14), not changed
+substrate decision stands; the DirectML default is under review (open question #14), not changed;
+**its Phase 0 exit criterion (confidences + N-best from the export) is met — D-0014**
 
 **Context.** R5's elimination converged the production path: `sherpa-rs` is archived (so
 sherpa-onnx from Rust means maintaining our own FFI), NeMo-Speech.cpp has no Rust bindings and
@@ -453,4 +455,51 @@ Whisper carries a measured 29.6 s stall per language switch through sherpa's API
 every input to a 30 s window, both costs against it as anything but a fallback.
 **DirectML vs WinML is explicitly not decided here** — every Task 2a figure is CPU EP, so this
 entry says nothing about any GPU execution provider.
+
+---
+
+## D-0014 — Task 2b: the confidence / N-best contract is kept; N-best comes from an owned Python decode loop
+
+**Status:** accepted · 2026-10-06 · **meets D-0011's Phase 0 exit criterion; amends D-0009's
+"entropy-based" word confidence**
+
+**Context.** SYNTHESIS §5.1 and D-0011 made it a Phase 0 exit criterion to show that an ONNX
+export can supply `FinalTranscript.tokens[].confidence` and `nbest[]` (C5), with "own the
+transducer decode loop" as the feared, expensive fallback. D-0009 committed Phase 1 to
+"entropy-based word confidence", on R8's LibriSpeech/NeMo evidence that entropy beats max-prob
+2–4×. Task 2b measured both on Parakeet TDT 0.6B v3 int8 against the frozen proxy set (n=160).
+Full write-up: `docs/research/T2B-confidence.md`; run
+`20261006T033722Z-t2b-parakeet-confidence-27dc`.
+
+**Decision.** **Keep C4/C5 unchanged** — verdict A. Below the contract:
+1. **`tokens[].confidence` is the emitted-token probability** (sherpa's `ys_log_probs`; word =
+   min over its tokens). Not entropy.
+2. **`nbest[]` comes from a Hermes-owned Python TDT beam loop** in the sidecar, K ≤ 4,
+   deduplicated, computed only when `decode_params.beam > 1`; otherwise it holds the top-1 alone.
+   The transcript itself is decoded greedily.
+3. **`nbest[].score` and any utterance score are rank-only**, never presented or consumed as
+   probabilities.
+
+**Rationale.** AUROC for separating correct from incorrect words, utterance-bootstrap 95% CI.
+sherpa's native emitted-token probability: **0.884 [0.855, 0.908]**. Best full-distribution
+signal, Gibbs entropy: 0.883, +0.004 [+0.001, +0.008] over the same quantity on the same
+hypothesis — resolved but negligible. **R8's Tsallis-1/3 is worse: −0.038 [−0.063, −0.016].**
+The full distribution buys nothing for confidence. N-best is another matter: sherpa computes K
+hypotheses and returns one, through every released API. The owned beam's list has real
+headroom — oracle WER −1.99 pp [−2.86, −1.27] at K=4, −3.05 pp on accented English — but the
+decoder cannot rank it (beam-4 top-1 vs greedy −0.16 pp [−0.89, +0.53]; beam-8 top-1 is worse,
++1.01 pp). The loop is small (greedy ~35 lines, beam ~75, over three ORT sessions), costs a
+decode-loop RTF of 0.06 / 0.20 on top of the encoder, and is where Parakeet's biasing must live
+anyway (D-0013). Phase 1 decodes in the Python sidecar (SYNTHESIS §4), so this is not Rust work.
+
+**Consequences.** §5.1's risk is retired for Parakeet: no architecture change, no Rust decoder
+in Phase 1. D-0009's highlighting stands on a better-measured footing — flagging the lowest 10%
+of words catches 56% of scorable errors — but it is blind to deletions (~41% of word errors
+here), its calibration is aggregate-only and mildly overconfident on accented English, and none
+of it is measured on the user's voice; auto-correction stays out. N-best has no Phase 1
+consumer, so its value is deferred to whatever selector eventually reads it. A correct TDT beam
+(prefix merging, duration branching), the only route to a useful decoder ranking, is not
+required and not planned. Whisper, the retained fallback, was not tested and does not inherit
+this result. Every Task 2b latency figure is non-decision-grade (resumed run, ~20% shift between
+sittings on matched content).
 

@@ -513,8 +513,19 @@ Two things remain unverified, and both are cheap to test:
    distribution; the emitted token's log-prob is not the same thing and is the weaker signal.
 2. Whether N-best comes out of `decoding_method="modified_beam_search"`.
 
-This also partially answers open question #12, which had the merge status of sherpa-onnx's
-`token_log_probs` down as ambiguous: on the installed 1.13.8 wheel, it is there.
+**Both answered 2026-10-06 by Task 2b (`T2B-confidence.md`):** (1) not through sherpa's API —
+and on Parakeet the emitted token's log-prob turned out *not* to be the weaker signal; it
+ties the best full-distribution measure. (2) No — the beam computes K hypotheses and returns
+one.
+
+~~This also partially answers open question #12, which had the merge status of sherpa-onnx's
+`token_log_probs` down as ambiguous: on the installed 1.13.8 wheel, it is there.~~
+**Corrected 2026-10-06 (Task 2b):** that sentence was wrong. It conflated `ys_log_probs` —
+the log-prob of the **emitted token only** — with PR #2897's full-vocabulary log-probs,
+which was **closed unmerged**; 1.13.8 is the latest release. No released sherpa-onnx API
+exposes the full per-step distribution, a sequence score, or N-best: `modified_beam_search`
+computes several hypotheses and returns one. Both are reachable only by owning the decode
+loop. See `T2B-confidence.md` §6.
 
 With the shortlist now down to two, the cheap tests are cheaper: both survivors need
 checking, but **Parakeet is the one that matters**, since it is the only candidate whose

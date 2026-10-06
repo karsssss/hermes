@@ -82,6 +82,38 @@ def test_bootstrap_is_seeded_and_paired():
     assert a["delta_vs_baseline"] is not None and a["delta_vs_baseline"] > 0
 
 
+def test_bootstrap_ap_is_seeded_and_brackets_a_perfect_ranker():
+    groups = [
+        [ce.Unit("a", 0, True, {"x": 0.9}), ce.Unit("b", 1, False, {"x": 0.1})],
+        [ce.Unit("c", 0, True, {"x": 0.8}), ce.Unit("d", 1, False, {"x": 0.3})],
+    ]
+    a = ce.bootstrap_ap(groups, "x", resamples=100, seed=3)
+    assert a == ce.bootstrap_ap(groups, "x", resamples=100, seed=3)
+    assert a["ap_ci_low"] == a["ap_ci_high"] == 1.0
+
+
+def _divergence_row(probe_tokens, margins, sherpa_pieces):
+    return {
+        "probe": {"steps": {"token": probe_tokens, "margin": margins}},
+        "sherpa_greedy": {"tokens": sherpa_pieces},
+    }
+
+
+def test_first_divergence_margin_takes_the_deciding_steps_only():
+    from hermes_eval.t2b import _first_divergence_margin
+
+    vocab = [" a", " b", " c", "<blk>"]
+    blank = 3
+    # probe: a, blank(0.05), b ; sherpa: a, c -> region is steps 1..2 (after a, up to b)
+    row = _divergence_row([0, 3, 1], [0.01, 0.05, 2.0], [" a", " c"])
+    assert _first_divergence_margin(row, vocab, blank) == 0.05
+    same = _divergence_row([0, 3, 1], [0.01, 0.05, 2.0], [" a", " b"])
+    assert _first_divergence_margin(same, vocab, blank) is None
+    # sherpa emits one more token than the probe: the region runs to the end
+    longer = _divergence_row([0, 3], [4.0, 0.3], [" a", " b"])
+    assert _first_divergence_margin(longer, vocab, blank) == 0.3
+
+
 def test_spearman():
     assert ce.spearman([1, 2, 3, 4], [10, 20, 30, 40]) == 1.0
     assert ce.spearman([1, 2, 3, 4], [4, 3, 2, 1]) == -1.0

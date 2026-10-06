@@ -19,6 +19,7 @@ import math
 import sys
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -317,19 +318,28 @@ def _wer(pairs: Sequence[tuple[str, str]]) -> float:
     return round(100.0 * sum(x.errors for x in c) / ref_len, 3) if ref_len else 0.0
 
 
-def analyze(run_dir: Path, resamples: int) -> dict[str, Any]:
-    from .bootstrap import paired_bootstrap
-
-    refs: dict[str, Record] = {r.id: r for r in load_strict(MANIFEST, require_audio=False).records}
+def _load_run(run_dir: Path) -> tuple[dict[str, Record], list[dict[str, Any]]]:
+    refs = {r.id: r for r in load_strict(MANIFEST, require_audio=False).records}
     rows = [
         json.loads(line)
         for line in (run_dir / "raw.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    vocab = _load_vocab()
+    return refs, rows
+
+
+@dataclass(frozen=True)
+class _Units:
+    probe: dict[str, list[ce.Unit]]
+    probe_dels: dict[str, int]
+    sherpa: dict[str, list[ce.Unit]]
+
+
+def _build_units(
+    rows: Sequence[dict[str, Any]], refs: dict[str, Record], vocab: list[str]
+) -> _Units:
     blank = len(vocab) - 1
     signals = {**SHERPA_REACHABLE, **NEEDS_DISTRIBUTION}
-
     # --- arm 1: the probe's greedy hypothesis, every signal on the same units --------
     probe_units: dict[str, list[ce.Unit]] = {}
     probe_dels: dict[str, int] = {}
@@ -346,9 +356,23 @@ def analyze(run_dir: Path, resamples: int) -> dict[str, Any]:
 
         sg = row["sherpa_greedy"]
         s_words, s_scores = ce.word_scores(
-            sg["tokens"], {"logp": sg["ys_log_probs"]}, {"sherpa_maxprob_min": "logp:min"}
+            sg["tokens"],
+            {"logp": sg["ys_log_probs"]},
+            {"sherpa_maxprob_min": "logp:min", "sherpa_maxprob_prod": "logp:sum"},
         )
         sherpa_units[row["id"]] = ce.label_units(ref, sg["tokens"], s_words, s_scores).units
+    return _Units(probe_units, probe_dels, sherpa_units)
+
+
+def analyze(run_dir: Path, resamples: int) -> dict[str, Any]:
+    from .bootstrap import paired_bootstrap
+
+    refs, rows = _load_run(run_dir)
+    vocab = _load_vocab()
+    blank = len(vocab) - 1
+    signals = {**SHERPA_REACHABLE, **NEEDS_DISTRIBUTION}
+    built = _build_units(rows, refs, vocab)
+    probe_units, probe_dels, sherpa_units = built.probe, built.probe_dels, built.sherpa
 
     # --- parity -----------------------------------------------------------------
     same_text = [r for r in rows if r["probe"]["greedy_text"] == r["sherpa_greedy"]["text"]]
@@ -520,6 +544,260 @@ def analyze(run_dir: Path, resamples: int) -> dict[str, Any]:
     return result
 
 
+# ===================================================================== supplement
+
+# Task 2a's Parakeet run: the same model and the same sherpa greedy decode, in a process of
+# its own. Its per-utterance latency is the content-matched reference for the timing check.
+T2A_PARAKEET_RUN = REPO / "eval" / "runs" / "20260927T022919Z-t2a-parakeet-tdt-v3-aff8"
+
+
+def _pct(xs: Sequence[float], q: float) -> float | None:
+    if not xs:
+        return None
+    s = sorted(xs)
+    return round(s[min(len(s) - 1, int(q * (len(s) - 1) + 0.5))], 4)
+
+
+def _first_divergence_margin(row: dict[str, Any], vocab: list[str], blank: int) -> float | None:
+    """The probe's smallest top1-top2 margin over the steps that decided the first token
+    where its greedy hypothesis and sherpa's part ways.
+
+    The decision region for emitted token i is every step after token i-1 was emitted, up
+    to and including the step that emitted token i (or to the end, if the probe stopped).
+    A small margin there means the two paths split at a near-tie, which is what numerical
+    noise in the features can flip; a large one would mean a real algorithmic difference.
+    """
+    steps = row["probe"]["steps"]
+    toks = steps["token"]
+    mine = [vocab[t] for t in toks if t != blank]
+    theirs = row["sherpa_greedy"]["tokens"]
+    i = next(
+        (k for k, (a, b) in enumerate(zip(mine, theirs, strict=False)) if a != b),
+        min(len(mine), len(theirs)),
+    )
+    if i == len(mine) == len(theirs):
+        return None
+    emit = [k for k, t in enumerate(toks) if t != blank]
+    lo = emit[i - 1] + 1 if i > 0 else 0
+    hi = emit[i] + 1 if i < len(emit) else len(toks)
+    return min(steps["margin"][lo:hi], default=None)
+
+
+def supplement(run_dir: Path, resamples: int) -> dict[str, Any]:
+    """Descriptive measures `analyze` does not compute, over the same units and rows.
+
+    Added after the run completed, so nothing here is a pre-registered statistic, and none
+    of it redefines a signal, a unit or a metric `analyze` already reports: AP intervals,
+    native-sherpa calibration, N-best headroom by rank, per-beam cost, parity locus, and
+    the timing comparison across the resume boundary.
+    """
+    from .bootstrap import paired_bootstrap
+
+    refs, rows = _load_run(run_dir)
+    vocab = _load_vocab()
+    blank = len(vocab) - 1
+    built = _build_units(rows, refs, vocab)
+    signals = [*SHERPA_REACHABLE, *NEEDS_DISTRIBUTION]
+
+    def ref_of(r: dict[str, Any]) -> str:
+        return refs[r["id"]].reference
+
+    # --- AP intervals and native calibration ---------------------------------------
+    confidence: dict[str, Any] = {}
+    for slice_name, pred in SLICES.items():
+        chosen = [r for r in rows if pred(r)]
+        groups = [built.probe[r["id"]] for r in chosen]
+        s_groups = [built.sherpa[r["id"]] for r in chosen]
+        s_units = [u for g in s_groups for u in g]
+        s_probs = [math.exp(u.scores["sherpa_maxprob_prod"]) for u in s_units]
+        confidence[slice_name] = {
+            "ap_ci": {n: ce.bootstrap_ap(groups, n, resamples=resamples) for n in signals},
+            "sherpa_native_ap_ci": ce.bootstrap_ap(
+                s_groups, "sherpa_maxprob_min", resamples=resamples
+            ),
+            "sherpa_native_calibration": {
+                "ece_word_prob_prod": ce._r(ce.ece(s_probs, [u.correct for u in s_units])),
+                "mean_word_prob": ce._r(sum(s_probs) / len(s_probs)) if s_probs else None,
+                "accuracy": ce._r(sum(u.correct for u in s_units) / len(s_units))
+                if s_units
+                else None,
+            },
+        }
+
+    # --- N-best headroom by rank, and what it costs ----------------------------------
+    nbest: dict[str, Any] = {}
+    for slice_name, pred in SLICES.items():
+        chosen = [r for r in rows if pred(r)]
+        greedy_c = [_counts(ref_of(r), r["probe"]["greedy_text"]) for r in chosen]
+        entry: dict[str, Any] = {"utterances": len(chosen), "wer_greedy": _rate(greedy_c)}
+        entry["greedy_with_errors"] = sum(1 for c in greedy_c if c.errors)
+        for k in BEAMS:
+            per = [[_counts(ref_of(r), h["text"]) for h in r["probe"][f"beam{k}"]] for r in chosen]
+            top1_err = [cs[0].errors > 0 for cs in per]
+            better = [any(c.errors < cs[0].errors for c in cs[1:]) for cs in per]
+            better_than_greedy = [
+                any(c.errors < g.errors for c in cs) for cs, g in zip(per, greedy_c, strict=True)
+            ]
+            exact_not_first = [
+                e and any(c.errors == 0 for c in cs[1:])
+                for cs, e in zip(per, top1_err, strict=True)
+            ]
+            oracle_at = {
+                str(n): _rate([min(cs[:n], key=lambda c: c.errors) for cs in per])
+                for n in range(1, k + 1)
+            }
+            oracle_c = [min(cs, key=lambda c: c.errors) for cs in per]
+            boot = paired_bootstrap(greedy_c, oracle_c, metric="wer", resamples=resamples)
+            ms = [r["probe"][f"beam{k}_ms"] for r in chosen]
+            audio = sum(r["audio_s"] for r in chosen)
+            entry[f"beam{k}"] = {
+                "wer_at_1": oracle_at["1"],
+                "oracle_wer_at_n": oracle_at,
+                "oracle_delta_vs_greedy_pp": boot.delta_pp,
+                "oracle_delta_ci_pp": [boot.ci_low_pp, boot.ci_high_pp],
+                "utts_top1_has_errors": sum(top1_err),
+                "utts_lower_ranked_hyp_better_than_top1": sum(better),
+                "utts_some_hyp_better_than_greedy": sum(better_than_greedy),
+                "utts_error_free_hyp_present_but_not_top1": sum(exact_not_first),
+                "loop_ms_p50": _pct(ms, 0.5),
+                "loop_ms_p95": _pct(ms, 0.95),
+                "loop_rtf": round(sum(ms) / 1000 / audio, 4) if audio else None,
+            }
+        gms = [r["probe"]["greedy_ms"] for r in chosen]
+        entry["greedy_loop_ms_p50"] = _pct(gms, 0.5)
+        entry["greedy_loop_ms_p95"] = _pct(gms, 0.95)
+        nbest[slice_name] = entry
+
+    # --- parity: how much, where, and does it cost quality -------------------------
+    parity: dict[str, Any] = {}
+    for slice_name, pred in SLICES.items():
+        chosen = [r for r in rows if pred(r)]
+        sh_c = [_counts(ref_of(r), r["sherpa_greedy"]["text"]) for r in chosen]
+        pr_c = [_counts(ref_of(r), r["probe"]["greedy_text"]) for r in chosen]
+        boot = paired_bootstrap(sh_c, pr_c, metric="wer", resamples=resamples)
+        differ = [r for r in chosen if r["probe"]["greedy_text"] != r["sherpa_greedy"]["text"]]
+        word_dist = [
+            align(
+                tokenize(r["sherpa_greedy"]["text"], "basic"),
+                tokenize(r["probe"]["greedy_text"], "basic"),
+            ).errors
+            for r in differ
+        ]
+        parity[slice_name] = {
+            "utterances": len(chosen),
+            "greedy_text_differs": len(differ),
+            "basic_normalized_differs": sum(1 for d in word_dist if d),
+            "words_differing_median": _pct(word_dist, 0.5),
+            "words_differing_max": max(word_dist, default=0),
+            "wer_sherpa": _rate(sh_c),
+            "wer_probe": _rate(pr_c),
+            "delta_probe_minus_sherpa_pp": boot.delta_pp,
+            "delta_ci_pp": [boot.ci_low_pp, boot.ci_high_pp],
+        }
+    div_margins = [
+        m
+        for r in rows
+        if r["probe"]["greedy_text"] != r["sherpa_greedy"]["text"]
+        for m in [_first_divergence_margin(r, vocab, blank)]
+        if m is not None
+    ]
+    all_margins = sorted(m for r in rows for m in r["probe"]["steps"]["margin"])
+    emitted_margins = [
+        m
+        for r in rows
+        for m, t in zip(r["probe"]["steps"]["margin"], r["probe"]["steps"]["token"], strict=True)
+        if t != blank
+    ]
+
+    def share_below(xs: Sequence[float], cut: float) -> float | None:
+        return round(sum(1 for x in xs if x < cut) / len(xs), 4) if xs else None
+
+    parity["divergence_locus"] = {
+        "n_divergent_utterances": len(div_margins),
+        "margin_at_first_divergence_p50": _pct(div_margins, 0.5),
+        "margin_at_first_divergence_max": max(div_margins, default=None),
+        "margin_all_steps_p50": _pct(all_margins, 0.5),
+        "margin_emitted_steps_p50": _pct(emitted_margins, 0.5),
+        "share_below_0.1_nats": {
+            "first_divergence": share_below(div_margins, 0.1),
+            "all_steps": share_below(all_margins, 0.1),
+            "emitted_steps": share_below(emitted_margins, 0.1),
+        },
+        "share_below_1.0_nats": {
+            "first_divergence": share_below(div_margins, 1.0),
+            "all_steps": share_below(all_margins, 1.0),
+            "emitted_steps": share_below(emitted_margins, 1.0),
+        },
+    }
+
+    # --- timing across the resume boundary ----------------------------------------
+    resume_at = 91
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    if run.get("resumes"):
+        resume_at = int(run["resumes"][0]["rows_present"])
+    t2a: dict[str, float] = {}
+    t2a_path = T2A_PARAKEET_RUN / "predictions.jsonl"
+    if t2a_path.exists():
+        for line in t2a_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                p = json.loads(line)
+                t2a[p["id"]] = float(p["latency_ms"])
+
+    def seg_stats(seg: Sequence[dict[str, Any]]) -> dict[str, Any]:
+        def rtf(get: Callable[[dict[str, Any]], float]) -> list[float]:
+            return [get(r) / 1000 / r["audio_s"] for r in seg if r["audio_s"] > 0]
+
+        ratio = [r["sherpa_greedy"]["decode_ms"] / t2a[r["id"]] for r in seg if r["id"] in t2a]
+        enc_vs_sherpa = [
+            r["probe"]["encode_ms"] / r["sherpa_greedy"]["decode_ms"]
+            for r in seg
+            if r["sherpa_greedy"]["decode_ms"] > 0
+        ]
+        return {
+            "rows": len(seg),
+            "audio_s": round(sum(r["audio_s"] for r in seg), 1),
+            "sherpa_greedy_rtf_p50": _pct(rtf(lambda r: r["sherpa_greedy"]["decode_ms"]), 0.5),
+            "sherpa_greedy_rtf_p95": _pct(rtf(lambda r: r["sherpa_greedy"]["decode_ms"]), 0.95),
+            "sherpa_beam4_rtf_p50": _pct(rtf(lambda r: r["sherpa_beam4"]["decode_ms"]), 0.5),
+            "probe_encode_rtf_p50": _pct(rtf(lambda r: r["probe"]["encode_ms"]), 0.5),
+            "probe_greedy_loop_rtf_p50": _pct(rtf(lambda r: r["probe"]["greedy_ms"]), 0.5),
+            "probe_beam4_loop_rtf_p50": _pct(rtf(lambda r: r["probe"]["beam4_ms"]), 0.5),
+            "probe_beam8_loop_rtf_p50": _pct(rtf(lambda r: r["probe"]["beam8_ms"]), 0.5),
+            "sherpa_greedy_ms_over_t2a_ms_p50": _pct(ratio, 0.5),
+            "sherpa_greedy_ms_over_t2a_ms_p95": _pct(ratio, 0.95),
+            "sherpa_greedy_ms_over_t2a_ms_max": round(max(ratio), 4) if ratio else None,
+            "probe_encode_over_sherpa_greedy_p50": _pct(enc_vs_sherpa, 0.5),
+        }
+
+    by_subset: dict[str, Any] = {}
+    for sub in sorted({r["subset"] for r in rows}):
+        a = [r for r in rows[:resume_at] if r["subset"] == sub]
+        b = [r for r in rows[resume_at:] if r["subset"] == sub]
+        if a and b:
+            by_subset[sub] = {"before": seg_stats(a), "after": seg_stats(b)}
+    timing = {
+        "resume_at_row": resume_at,
+        "reference_run": T2A_PARAKEET_RUN.name if t2a else None,
+        "rows_1_to_resume": seg_stats(rows[:resume_at]),
+        "rows_after_resume": seg_stats(rows[resume_at:]),
+        "subsets_split_by_resume": by_subset,
+    }
+
+    result = {
+        "run_id": run_dir.name,
+        "analyzed_utc": utc_now(),
+        "n": len(rows),
+        "note": "post-hoc descriptive measures; analysis.json holds the pre-registered ones",
+        "bootstrap": {"resamples": resamples, "seed": ce.DEFAULT_SEED, "unit": "utterance"},
+        "confidence": confidence,
+        "nbest": nbest,
+        "parity": parity,
+        "timing": timing,
+    }
+    (run_dir / "supplement.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return result
+
+
 def _rate(counts: Sequence[Counts]) -> float:
     ref_len = sum(c.ref_len for c in counts)
     return round(100.0 * sum(c.errors for c in counts) / ref_len, 3) if ref_len else 0.0
@@ -535,9 +813,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     a = sub.add_parser("analyze")
     a.add_argument("run_dir", type=Path)
     a.add_argument("--resamples", type=int, default=ce.DEFAULT_RESAMPLES)
+    s = sub.add_parser("supplement")
+    s.add_argument("run_dir", type=Path)
+    s.add_argument("--resamples", type=int, default=ce.DEFAULT_RESAMPLES)
     args = parser.parse_args(argv)
     if args.cmd == "collect":
         print(collect(args.out, args.resume, args.limit))
+    elif args.cmd == "supplement":
+        supplement(args.run_dir, args.resamples)
+        print(args.run_dir / "supplement.json")
     else:
         analyze(args.run_dir, args.resamples)
         print(args.run_dir / "analysis.json")

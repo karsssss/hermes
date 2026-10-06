@@ -1,0 +1,227 @@
+{
+  "run_id": "20261006T033722Z-t2b-parakeet-confidence-27dc",
+  "task": "Phase 0 Task 2b - Parakeet confidence / N-best architecture gate",
+  "started_utc": "2026-10-06T03:37:22Z",
+  "git": {
+    "sha": "013217b8b7c5ecef0cfcdca6a96c6350eec1bba7",
+    "dirty": true
+  },
+  "hardware": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "os_version": "10.0.26200",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "logical_cores": 12,
+    "total_ram_gb": 15.73,
+    "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU, 566.24, 6141 MiB"
+  },
+  "software": {
+    "harness_version": "0.1.0",
+    "python": "3.11.14",
+    "python_implementation": "CPython",
+    "omp_num_threads": null,
+    "sherpa_onnx": "1.13.8",
+    "onnxruntime": "1.28.0",
+    "kaldi_native_fbank": "1.22.3",
+    "numpy": "2.4.6"
+  },
+  "manifest": {
+    "path": "eval/datasets/public-proxy-v1/manifest.jsonl",
+    "sha256": "2b3a46ede2700f30479a218abcdf0f3d55d12c2610dfeb82575e0595c9d7053e",
+    "n": 160
+  },
+  "model": {
+    "id": "nvidia/parakeet-tdt-0.6b-v3 (sherpa-onnx int8 export)",
+    "dir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+    "sha256": "d0a44f3cb58043afb646609a0dc08198390279606351d9b22380e04ce89b8760",
+    "graph_io": {
+      "encoder": {
+        "inputs": [
+          [
+            "audio_signal",
+            [
+              "audio_signal_dynamic_axes_1",
+              128,
+              "audio_signal_dynamic_axes_2"
+            ],
+            "tensor(float)"
+          ],
+          [
+            "length",
+            [
+              "length_dynamic_axes_1"
+            ],
+            "tensor(int64)"
+          ]
+        ],
+        "outputs": [
+          [
+            "outputs",
+            [
+              "Transposeoutputs_dim_0",
+              1024,
+              "Transposeoutputs_dim_2"
+            ],
+            "tensor(float)"
+          ],
+          [
+            "encoded_lengths",
+            [
+              "length_dynamic_axes_1"
+            ],
+            "tensor(int64)"
+          ]
+        ],
+        "metadata": {
+          "model_author": "NeMo",
+          "vocab_size": "8192",
+          "normalize_type": "per_feature",
+          "subsampling_factor": "8",
+          "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
+          "comment": "Only the transducer branch is exported",
+          "pred_rnn_layers": "2",
+          "pred_hidden": "640",
+          "version": "2",
+          "model_type": "EncDecRNNTBPEModel",
+          "feat_dim": "128"
+        }
+      },
+      "decoder": {
+        "inputs": [
+          [
+            "targets",
+            [
+              "targets_dynamic_axes_1",
+              "targets_dynamic_axes_2"
+            ],
+            "tensor(int32)"
+          ],
+          [
+            "target_length",
+            [
+              "target_length_dynamic_axes_1"
+            ],
+            "tensor(int32)"
+          ],
+          [
+            "states.1",
+            [
+              2,
+              "states.1_dim_1",
+              640
+            ],
+            "tensor(float)"
+          ],
+          [
+            "onnx::Slice_3",
+            [
+              2,
+              1,
+              640
+            ],
+            "tensor(float)"
+          ]
+        ],
+        "outputs": [
+          [
+            "outputs",
+            [
+              "targets_dynamic_axes_1",
+              640,
+              "targets_dynamic_axes_2"
+            ],
+            "tensor(float)"
+          ],
+          [
+            "prednet_lengths",
+            [
+              "target_length_dynamic_axes_1"
+            ],
+            "tensor(int32)"
+          ],
+          [
+            "states",
+            [
+              2,
+              "states_dynamic_axes_1",
+              640
+            ],
+            "tensor(float)"
+          ],
+          [
+            "162",
+            [
+              2,
+              "Concat162_dim_1",
+              640
+            ],
+            "tensor(float)"
+          ]
+        ],
+        "metadata": {
+          "onnx.infer": "onnxruntime.quant"
+        }
+      },
+      "joiner": {
+        "inputs": [
+          [
+            "encoder_outputs",
+            [
+              "encoder_outputs_dynamic_axes_1",
+              1024,
+              "encoder_outputs_dynamic_axes_2"
+            ],
+            "tensor(float)"
+          ],
+          [
+            "decoder_outputs",
+            [
+              "decoder_outputs_dynamic_axes_1",
+              640,
+              "decoder_outputs_dynamic_axes_2"
+            ],
+            "tensor(float)"
+          ]
+        ],
+        "outputs": [
+          [
+            "outputs",
+            [
+              "Addoutputs_dim_0",
+              "Addoutputs_dim_1",
+              "Addoutputs_dim_2",
+              8198
+            ],
+            "tensor(float)"
+          ]
+        ],
+        "metadata": {
+          "onnx.infer": "onnxruntime.quant"
+        }
+      }
+    },
+    "vocab_size_incl_blank": 8193
+  },
+  "config": {
+    "threads": 4,
+    "provider": "cpu",
+    "sherpa_arms": [
+      "greedy_search",
+      "modified_beam_search max_active_paths=4"
+    ],
+    "probe_beams": [
+      4,
+      8
+    ]
+  },
+  "resumes": [
+    {
+      "resumed_utc": "2026-10-06T04:37:44Z",
+      "rows_present": 91,
+      "git": {
+        "sha": "87ec846936142514c84ba9a455bccbec627bb86e",
+        "dirty": false
+      }
+    }
+  ]
+}

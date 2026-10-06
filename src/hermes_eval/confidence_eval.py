@@ -277,6 +277,29 @@ def bootstrap_auroc(
     return out
 
 
+def bootstrap_ap(
+    groups: Sequence[Sequence[Unit]],
+    signal: str,
+    *,
+    resamples: int = DEFAULT_RESAMPLES,
+    seed: int = DEFAULT_SEED,
+) -> dict[str, float | None]:
+    """Utterance-level bootstrap CI of error-detection AP, same resampling as AUROC's."""
+    rng = random.Random(seed)
+    n = len(groups)
+    values: list[float] = []
+    for _ in range(resamples):
+        units = [u for _ in range(n) for u in groups[rng.randrange(n)]]
+        ap = average_precision([u.scores[signal] for u in units], [not u.correct for u in units])
+        if ap is not None:
+            values.append(ap)
+    values.sort()
+    return {
+        "ap_ci_low": _r(_quantile(values, 0.025)) if values else None,
+        "ap_ci_high": _r(_quantile(values, 0.975)) if values else None,
+    }
+
+
 def spearman(xs: Sequence[float], ys: Sequence[float]) -> float | None:
     """Spearman rank correlation with average ranks for ties."""
 

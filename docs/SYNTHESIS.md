@@ -2,6 +2,7 @@
 
 Status: 2026-09-26. Written by the lead after all nine research memos landed.
 **Amended 2026-10-05:** §5 and §11 corrected by the Task 2a measurement (D-0013).
+**Amended 2026-10-06:** §5.1 resolved for Parakeet, §9, §15 and C5 updated, by Task 2b (D-0014).
 
 This is the decision document. `ARCHITECTURE.md` describes the target system; this says
 what the research actually settled, what it left open, and what Phase 1 should build.
@@ -146,20 +147,40 @@ mechanical rewrite, whereas an FST toolchain migration does not.
 
 ### 5.1 The risk this creates, which no single memo owns
 
-The architecture requires `AsrResult` to carry **token-level confidences and an N-best list**.
-R8 confirms NeMo's Python stack provides them. **It is unverified that an ONNX export does.**
-If the export is a black box that emits text, the production Rust path silently loses the
-signal the entire correction and highlighting design depends on — and we would not discover it
-until the Phase 1 port.
+**RESOLVED for Parakeet TDT 0.6B v3 — 2026-10-06, Task 2b, D-0014** (`docs/research/T2B-confidence.md`).
+The contract is kept unchanged. What was measured on the int8 sherpa-onnx export:
 
-There is a resolution, and it is expensive: run the transducer decode loop ourselves
-(encoder → decoder/joiner, step by step, over ONNX), which yields the logits by construction
-and is also where biasing has to be implemented anyway. That is what sherpa-onnx does. It is a
-substantial Rust task for a developer with no Rust experience.
+- **The export exposes everything**: the joiner returns the full token distribution and the
+  TDT duration distribution at every step.
+- **sherpa's emitted-token probability (`ys_log_probs`, public API) is sufficient for Phase 1
+  confidence.** Word-error AUROC 0.884 [0.855, 0.908]; no signal computed from the full
+  distribution beats it by more than 0.005, and R8's Tsallis-1/3 is significantly worse.
+  **Richer full-distribution confidence is not needed for Phase 1.**
+- **N-best requires a small Hermes-owned Python TDT beam loop.** sherpa computes several
+  hypotheses and returns one through every released API. The owned loop is ~35 lines
+  (greedy) / ~75 (beam) over three ORT sessions, in the Python sidecar where Phase 1 decodes
+  anyway (§4).
+- **No Rust decoder is required.** The loop is Python, Phase 1 decodes in the Python sidecar,
+  and a Rust port belongs to Phase 3 (D-0003).
 
-**Therefore: Phase 0 must verify, as an explicit exit criterion, that per-token logits are
-reachable from the exported artifact.** This is the highest-value unknown in the whole plan and
-it is cheap to test early. If the answer is no, Phase 1's scope changes materially.
+The scope is Parakeet only. Whisper large-v3-turbo, the retained fallback, was not tested and
+does not inherit this result. **DirectML vs WinML remains unresolved** (§5, open question
+#14): every Task 2b figure is CPU EP. The original risk statement follows, kept for the record.
+
+> The architecture requires `AsrResult` to carry **token-level confidences and an N-best
+> list**. R8 confirms NeMo's Python stack provides them. ~~It is unverified that an ONNX export
+> does.~~ If the export is a black box that emits text, the production Rust path silently
+> loses the signal the entire correction and highlighting design depends on — and we would
+> not discover it until the Phase 1 port.
+>
+> There is a resolution: run the transducer decode loop ourselves (encoder → decoder/joiner,
+> step by step, over ONNX), which yields the logits by construction and is also where biasing
+> has to be implemented anyway. That is what sherpa-onnx does. ~~It is a substantial Rust task
+> for a developer with no Rust experience.~~ **[Superseded by measurement: for Parakeet the
+> loop is small, and it is Python, not Rust, in Phase 1 — see above.]**
+>
+> **Therefore: Phase 0 must verify, as an explicit exit criterion, that per-token logits are
+> reachable from the exported artifact.** **[Met for Parakeet — D-0014.]**
 
 ## 6. Multilingual strategy
 
@@ -252,12 +273,16 @@ confidence signal that would gate it is uncalibrated (§0.3).
 
 What ships:
 
-- Entropy-based word confidence, computed in the sidecar, carried in the result. This is
-  arithmetic over already-computed logits — no second model, no latency risk — and the
-  architecture requires it regardless of whether correction ever ships.
+- ~~Entropy-based~~ word confidence, computed in the sidecar, carried in the result.
+  **Amended 2026-10-06 (D-0014): for Parakeet it is the emitted-token probability** that
+  sherpa already returns (word = min over its tokens). Entropy measures did not beat it on
+  Parakeet. This is arithmetic over already-computed logits — no second model, no latency
+  risk — and the architecture requires it regardless of whether correction ever ships.
 - Visual highlighting of low-confidence spans. This is the one use the evidence supports
-  without calibration: entropy is validated for *detecting* likely-wrong words, which needs
-  relative discrimination, not calibrated probability.
+  without calibration: the signal is validated for *detecting* likely-wrong words, which
+  needs relative discrimination, not calibrated probability. On the proxy set, flagging the
+  lowest 10% of words catches 56% of scorable errors. Deletions (~41% of word errors there)
+  are invisible to any word confidence.
 
 What is deferred: any LLM call, to a user-requested async path at the earliest.
 "Correct-after-injection and patch" becomes a Phase 2 candidate only if a calibration study on
@@ -458,10 +483,15 @@ is easy to adopt casually and expensive to remove later.
 
 ## 15. Key risks
 
-1. **ONNX export may not expose per-token logits** (§5.1). Highest-value unknown; cheap to test
-   in Phase 0; changes Phase 1 scope materially if the answer is no.
+1. ~~**ONNX export may not expose per-token logits** (§5.1).~~ **Retired for Parakeet
+   (D-0014, 2026-10-06):** the export exposes them, sherpa's API returns a sufficient token
+   confidence, and N-best needs only a small owned Python loop. Still open for any other
+   backend, Whisper included.
 2. **Confidence is uncalibrated on our actual speech.** Every published number is LibriSpeech
-   clean read speech. Our user is accented and code-switches. Nobody has measured this.
+   clean read speech. Our user is accented and code-switches. *Partly measured (Task 2b):*
+   on accented English (EdAcc) Parakeet's word confidence reaches AUROC 0.863 and is mildly
+   overconfident in aggregate. Code-switched speech and the user's own voice remain
+   unmeasured.
 3. **Per-app ITN aggressiveness is unattested.** Our invention, so it carries invention risk.
 4. **Transparent + click-through + always-on-top HUD on WebView2/Win11 is unverified** and
    historically a pain point. Spike early with a throwaway window.
@@ -556,7 +586,10 @@ beam-search biasing breaks the monotonic-prefix property, so this is not hypothe
 `end_ms`), `nbest[]` (hypothesis + score), `language`, `tier_used`, `model_id`, `stage_timings`.
 **`tokens[].confidence` and `nbest[]` are non-negotiable** — they are the reason this is a
 contract and not a string, and §5.1 flags that a backend may not be able to supply them. A
-backend that cannot is not a valid backend.
+backend that cannot is not a valid backend. *Parakeet can (D-0014):* `confidence` from
+sherpa's emitted-token probability, `nbest[]` from an owned Python beam (K ≤ 4,
+deduplicated, only when `decode_params.beam > 1`), and `nbest[].score` is rank-only, never a
+probability.
 
 **C6 `NlpResult`** — `raw_text`, `formatted_text` (post-ITN, what actually gets injected),
 `itn_spans[]` (what changed and by which rule — needed for the ITN slot error rate),
