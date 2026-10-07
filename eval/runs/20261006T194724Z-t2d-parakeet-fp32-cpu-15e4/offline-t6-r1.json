@@ -1,0 +1,26 @@
+{
+  "threads": 6,
+  "round": 1,
+  "pid": 22844,
+  "started_utc": "2026-10-06T19:55:30Z",
+  "memory_before_load": {
+    "working_set_mb": 52.0,
+    "peak_working_set_mb": 52.0,
+    "private_mb": 388.5
+  },
+  "load_ms": 11286.1,
+  "memory_after_load": {
+    "working_set_mb": 2233.2,
+    "peak_working_set_mb": 2253.2,
+    "private_mb": 2569.0
+  },
+  "warmup_ms": 6770.0,
+  "decode_wall_s": 707.19,
+  "decode_cpu_s": 2599.52,
+  "memory_after_decode": {
+    "working_set_mb": 2734.8,
+    "peak_working_set_mb": 2736.1,
+    "private_mb": 2849.0
+  },
+  "finished_utc": "2026-10-06T20:07:36Z"
+}

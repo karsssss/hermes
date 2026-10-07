@@ -63,6 +63,14 @@ fewer transcripts under inaudible dither, and agrees with a direct-ORT decode on
 127/160). Confidence ties. Cost: +1.74 GB resident (2.74 GB peak), 3.8× disk, ~2× load,
 +7–9% decode time. See **§ Task 2c — COMPLETE** below and `docs/research/T2C-precision.md`.
 
+**Task 2d (Parakeet FP32 CPU thread sweep / streaming latency gate) is INTERRUPTED —
+diagnostic only. No CPU streaming PASS/MARGINAL/FAIL decision has been made, no thread
+configuration is frozen or provisional, and the DirectML/WinML question is untouched.** The
+default-QoS round finished at 4/6/8 threads before Claude Code's memory-pressure reaper killed
+the sweep; 12 threads never started, and no streaming run happened. What it did establish is why
+Task 2c's timing swung: **Windows ran the worker on the 4 E-cores only**, and **severe paging**
+(available memory down to ~520 MB) contaminated every row. See **§ Task 2d — INTERRUPTED** below.
+
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
 ship.
@@ -417,8 +425,71 @@ DirectML vs WinML (open question #14) remains unresolved — this task chose a r
 not an execution provider. **FP32 has not been measured on personal speech**; all of the
 above is proxy-set WER.
 
-Harness changes (uncommitted): `src/hermes_eval/t2c.py` (new); `TdtProbe` takes `model_dir`
-and `files` (defaults unchanged).
+Harness changes (committed in `4e403e5`): `src/hermes_eval/t2c.py` (new); `TdtProbe` takes
+`model_dir` and `files` (defaults unchanged).
+
+## Task 2d — INTERRUPTED (2026-10-06) — diagnostic only, no decision
+
+Task 2d asks whether Parakeet TDT v3 **FP32 on the ORT CPU EP** is fit for the Phase 1
+interactive path: a bounded thread sweep (Part A), streaming behaviour (Part B), and a latency
+gate (Part C). **None of the three is answered.** The run was cut short, and what did finish was
+measured under two contaminations that it then diagnosed. **No CPU streaming PASS / MARGINAL /
+FAIL decision has been made; no thread configuration is frozen or provisional; DirectML/WinML
+is neither deferred nor recommended on the strength of this run.**
+
+| | |
+|---|---|
+| Partial run | `eval/runs/20261006T194724Z-t2d-parakeet-fp32-cpu-15e4` — `run.json` (pre-flight), `offline-t{4,6,8}-r1.{json,jsonl}`, `counters.jsonl` (PDH, 0.5 s), `NOTE.md`. Committed as diagnostic evidence, ~1.3 MB |
+| Pre-flight | tree clean at `4e403e5`; FP32 hashes = Task 2c; ORT 1.28.0 DLL pinned beside sherpa (sha256 `14e18662…`); no stale ASR processes; Balanced plan, on AC; available RAM 1.7–5.0 GB of 15.7 (Edge ~7 GB); topology 4 SMT P-cores = logical 0–7, 4 E-cores = 8–11 |
+| Completed | default QoS, round 1 only: **4, 6, 8 threads**, 160/160 rows each |
+| Not started | 12 threads; rounds 2–3; every HighQoS worker; both streaming policies |
+| Why it stopped | Claude Code's background-shell memory-pressure reaper killed the sweep during the 12-thread load. Not a harness failure |
+
+**Finding 1 — Windows placed the worker on the E-cores.** With power throttling left to the OS
+(control mask 0, the state of every Task 2a–2c worker), the windowless console worker ran on
+the 4 E-cores: E-cores 100% busy, P-cores at background load (~14–20%) for all 480 rows, at
+every thread count. Extra threads only oversubscribed those 4 cores:
+
+| threads (default QoS) | RTF | p50 / p95 | cores busy | E-busy / P-busy |
+|---|---:|---:|---:|---:|
+| 4 | 0.42 | 2432 / 4508 ms | 3.68 | 100% / ~20% |
+| 6 | 0.67 | 3955 / 6955 ms | 3.68 | 100% / ~19% |
+| 8 | 0.89 | 5342 / 9031 ms | 3.78 | 100% / ~14% |
+
+This is the likely explanation of Task 2c's "~5× fast regime": stretches where the scheduler
+happened to use P-cores. **It is a product issue, not a benchmarking artefact** — the Phase 1
+sidecar is also a windowless background process and will get the same treatment unless it opts
+out. The harness now can: `--qos high` sets `PROCESS_POWER_THROTTLING_EXECUTION_SPEED` with
+state 0 (no priority, affinity or power-plan change) and records the read-back state per worker.
+Its effect is **unmeasured**.
+
+**Finding 2 — severe paging contaminated the timing.** The FP32 sidecar peaks at 2.74 GB; with
+Edge holding ~7 GB, available memory fell to ~520 MB and each 160-row pass paged in ~1.9–3.8 GB
+from disk. Every absolute figure above carries that. **The numbers in the table are diagnostic
+only and must not be quoted as Parakeet's CPU latency.**
+
+Untouched by both contaminations: WER is **10.721%** at 4, 6 and 8 threads — Task 2c's FP32
+figure exactly; transcripts do not depend on thread count here.
+
+**To resume (not started):** free memory first (the model must stay resident), then
+```
+uv run --group asr python -m hermes_eval.t2d sweep --qos high --rounds 3      # ~60–75 min
+uv run --group asr python -m hermes_eval.t2d stream <run-dir> --threads N --qos high   # ~40 min
+uv run python -m hermes_eval.t2d analyze <run-dir>
+```
+The streaming gate is pre-registered in `t2d.GATE`, fixed before any streaming number existed:
+release-to-final p95 ≤ 300 ms PASS (ARCHITECTURE §8 final-ASR budget), ≤ 450 ms MARGINAL (700 ms
+end-to-end minus endpoint 150, NLP 50, injection 50; no correction pass per D-0009), else FAIL;
+a finalization policy counts only if its WER is not resolved worse than the offline full decode.
+
+Harness changes (this checkpoint): `src/hermes_eval/t2d.py` — `cpu_topology` (P/E split from
+`GetLogicalProcessorInformationEx`), a PDH sampler process (per-logical-CPU busy % and
+performance %, hard page-ins, available MB, via `PdhAddEnglishCounterW` because `typeperf`
+rejects English counter names on this Russian-locale Windows), `set_qos`, the offline sweep
+worker, the real-time streaming worker (`redecode` and LocalAgreement-2 `commit` policies,
+0.5 s hop, push-to-talk release), and the analysis (per-row counter attribution, regime flags,
+latency fit, TTFP / useful-partial / UPWR / word-display lag / finalization decomposition,
+paired WER bootstrap vs offline). `tests/test_t2d.py` covers the streaming bookkeeping.
 
 ## Next steps — Phase 0
 
@@ -498,6 +569,9 @@ order:
    it — it cannot compute either headline metric.
 4. int8-vs-fp32 joiner emission *timestamp* drift (WER is insensitive to this failure mode).
 5. Thread-count sweep on the P/E-core split — `-t 4/6/8/12`.
+   **Attempted 2026-10-06 (Task 2d), interrupted, diagnostic only:** at default QoS the worker
+   ran on the E-cores alone and paged heavily, so no thread count was measured fairly. Resume
+   with `t2d sweep --qos high` once memory is free. See § Task 2d.
 6. Confidence signal quality on **accented and code-switched** speech — the gap that
    matters most for our user. *Accented English measured on the proxy set by Task 2b
    (AUROC 0.863); code-switched speech and the user's own voice still need Task 1b.*
@@ -643,6 +717,12 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
   `analysis.json` — ~1.8 MB, ~95 min of compute). Collected at `bdbca28` dirty (`t2c.py` then
   uncommitted); the committed `t2c.py` reproduces `analysis.json` byte-for-byte. Model files
   stay in `models/` (gitignored).
+- **Task 2d is checkpointed, not complete** (`phase0: checkpoint CPU streaming benchmark
+  harness`): `t2d.py`, `tests/test_t2d.py`, this section, and the partial diagnostic run
+  `eval/runs/20261006T194724Z-t2d-parakeet-fp32-cpu-15e4` with its `NOTE.md`. Collected at
+  `4e403e5` dirty (`t2d.py` then uncommitted; the offline worker and sampler are unchanged in
+  the committed file apart from the added `qos` argument). It is evidence for two findings, not
+  a Task 2d result.
 - **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
   `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
   `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and
