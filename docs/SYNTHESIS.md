@@ -134,6 +134,12 @@ mechanical rewrite, whereas an FST toolchain migration does not.
   works across vendors, and has no redistribution question. *Reopened, not decided
   (2026-10-05):* ONNX Runtime now says new feature development has moved to WinML, and no
   candidate has been measured on DirectML — see `CURRENT.md` open question #14.
+  *Measured 2026-10-08 (Task 2d, D-0016):* **the CPU EP alone does not meet the interactive
+  gate.** Parakeet FP32 at 4 threads (frozen) with HighQoS has release-to-final p95 1339 ms
+  under full-utterance redecode, the only policy that keeps WER intact. A context-free tail
+  commit reaches 443 ms but doubles WER. "CPU EP always working" still holds as a fallback,
+  not as a latency-compliant default. On Windows the CPU path **requires** opting the sidecar
+  out of execution-speed throttling; without that it runs on the E-cores about 6× slower.
 - **Model: decided in Phase 0 by measurement, not here.** *Corrected 2026-10-05 (D-0013).*
   This section originally named Nemotron Speech Streaming EN 0.6B @ 560 ms the leading
   hypothesis, on architecture and licensing alone. Task 2a measured all three candidates on
@@ -498,6 +504,10 @@ is easy to adopt casually and expensive to remove later.
 5. **uiAccess through Tauri's bundler is unverified.** `embed-manifest` 1.5.1 is the candidate;
    treat as a half-day spike.
 6. **Process-boundary latency inside a 700 ms p95 budget is unmeasured.**
+   **Finalization latency is now measured and fails on the CPU EP** (Task 2d, D-0016): a
+   full-utterance final redecode scales with utterance length (p95 1339 ms against a 450 ms
+   allowance), and a context-free tail commit trades the latency for +13 pp WER. The blocker
+   is finalization architecture and acceleration, not model choice.
 7. **No Slavic-English code-switching corpus exists.** Re-verified 2026-09-27: CS-FLEURS'
    `cs_rus_eng`/`cs_ukr_eng` are concatenative TTS and CC BY-NC. We collect our own or W2 has
    a hole.
@@ -540,6 +550,8 @@ is easy to adopt casually and expensive to remove later.
 4. `ARCHITECTURE.md` — Rust core as a UI-agnostic library crate from day one.
 5. `ARCHITECTURE.md` §5.5 — PAC citation corrected; correction pass moved out of Phase 1.
 6. `ARCHITECTURE.md` §5.6 — WFST/Pynini ITN replaced with a rule cascade.
+7. §5 and §15 (2026-10-08, D-0016) — the CPU EP fails the pre-registered streaming gate for
+   Parakeet FP32; HighQoS is required on the Windows CPU path.
 
 ## 18. Proposed contracts — NOT implemented
 

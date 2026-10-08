@@ -166,5 +166,35 @@
     ],
     "sample_interval_s": 0.5,
     "qos": "high"
-  }
+  },
+  "stream_sessions": [
+    {
+      "tag": "stream-redecode-t4",
+      "policy": "redecode",
+      "threads": 4,
+      "qos": "high",
+      "started_utc": "2026-10-08T18:46:53Z",
+      "rows_present": 0,
+      "torn_bytes_dropped": 0,
+      "git": {
+        "sha": "f08876712b880c703c52c25d8d8aa2b8baa008ec",
+        "dirty": false
+      },
+      "t2d_py_sha256": "b59c011984ec96e8d8579d15f75ea180a4830249f4ea6aa7aec2a1505db47fe9"
+    },
+    {
+      "tag": "stream-commit-t4",
+      "policy": "commit",
+      "threads": 4,
+      "qos": "high",
+      "started_utc": "2026-10-08T19:06:16Z",
+      "rows_present": 0,
+      "torn_bytes_dropped": 0,
+      "git": {
+        "sha": "f08876712b880c703c52c25d8d8aa2b8baa008ec",
+        "dirty": true
+      },
+      "t2d_py_sha256": "b59c011984ec96e8d8579d15f75ea180a4830249f4ea6aa7aec2a1505db47fe9"
+    }
+  ]
 }

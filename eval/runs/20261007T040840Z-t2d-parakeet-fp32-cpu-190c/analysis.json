@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-10-08T18:28:50Z",
+  "generated_utc": "2026-10-08T19:24:58Z",
   "gate": {
     "metric": "release-to-final latency p95, all 160 utterances, push-to-talk release",
     "pass_ms": 300.0,
@@ -125,5 +125,152 @@
       ]
     }
   },
-  "stream": {}
+  "stream": {
+    "commit-t4": {
+      "threads": 4,
+      "load_ms": 3441.7,
+      "peak_ws_mb": 2609.7,
+      "final": {
+        "latency_p50_ms": 192.5,
+        "latency_p95_ms": 443.2,
+        "latency_p99_ms": 610.3,
+        "latency_max_ms": 816.3,
+        "inflight_wait_p50_ms": 0.5,
+        "inflight_wait_p95_ms": 165.3,
+        "compute_p50_ms": 171.4,
+        "compute_p95_ms": 345.2,
+        "tail_s_p50": 2.1,
+        "tail_s_p95": 5.3,
+        "by_duration": {
+          "le3s": {
+            "n": 28,
+            "p50_ms": 169.7,
+            "p95_ms": 257.8
+          },
+          "3to6s": {
+            "n": 63,
+            "p50_ms": 207.2,
+            "p95_ms": 373.8
+          },
+          "6to10s": {
+            "n": 45,
+            "p50_ms": 224.6,
+            "p95_ms": 484.4
+          },
+          "gt10s": {
+            "n": 24,
+            "p50_ms": 180.7,
+            "p95_ms": 610.3
+          }
+        },
+        "empty_finals": 0
+      },
+      "partials": {
+        "n": 2023,
+        "empty_while_final_nonempty": 52,
+        "ttfp_p50_s": 0.6,
+        "ttfp_p95_s": 1.1,
+        "ttfup_p50_s": 1.1,
+        "ttfup_p95_s": 1.7,
+        "ttfup_from_onset_p50_s": 0.6,
+        "ttfup_from_onset_p95_s": 1.6,
+        "no_useful_partial": 2,
+        "cadence_p50_s": 0.5,
+        "cadence_p95_s": 0.5,
+        "compute_p50_ms": 164.5,
+        "compute_p95_ms": 296.2,
+        "decoded_audio_p95_s": 4.4,
+        "upwr_norm": 1.374,
+        "upwr_raw": 1.854,
+        "revising_partials": 973,
+        "word_lag_p50_s": 1.1,
+        "word_lag_p95_s": 3.6
+      },
+      "quality": {
+        "wer_offline": 10.721,
+        "wer_final": 24.094,
+        "delta_pp": 13.3723,
+        "ci_pp": [
+          10.7052,
+          16.3157
+        ],
+        "raw_identical_to_offline": 10
+      },
+      "eligible": false,
+      "gate": "MARGINAL"
+    },
+    "redecode-t4": {
+      "threads": 4,
+      "load_ms": 3500.6,
+      "peak_ws_mb": 2750.2,
+      "final": {
+        "latency_p50_ms": 452.2,
+        "latency_p95_ms": 1339.1,
+        "latency_p99_ms": 1838.2,
+        "latency_max_ms": 1894.5,
+        "inflight_wait_p50_ms": 94.5,
+        "inflight_wait_p95_ms": 574.7,
+        "compute_p50_ms": 350.8,
+        "compute_p95_ms": 863.0,
+        "tail_s_p50": 5.3,
+        "tail_s_p95": 14.9,
+        "by_duration": {
+          "le3s": {
+            "n": 28,
+            "p50_ms": 211.6,
+            "p95_ms": 273.2
+          },
+          "3to6s": {
+            "n": 63,
+            "p50_ms": 360.2,
+            "p95_ms": 598.3
+          },
+          "6to10s": {
+            "n": 45,
+            "p50_ms": 814.4,
+            "p95_ms": 1005.5
+          },
+          "gt10s": {
+            "n": 24,
+            "p50_ms": 1183.1,
+            "p95_ms": 1838.2
+          }
+        },
+        "empty_finals": 0
+      },
+      "partials": {
+        "n": 1952,
+        "empty_while_final_nonempty": 56,
+        "ttfp_p50_s": 0.6,
+        "ttfp_p95_s": 1.1,
+        "ttfup_p50_s": 1.1,
+        "ttfup_p95_s": 3.2,
+        "ttfup_from_onset_p50_s": 0.8,
+        "ttfup_from_onset_p95_s": 3.1,
+        "no_useful_partial": 4,
+        "cadence_p50_s": 0.5,
+        "cadence_p95_s": 0.7,
+        "compute_p50_ms": 250.7,
+        "compute_p95_ms": 665.0,
+        "decoded_audio_p95_s": 11.1,
+        "upwr_norm": 1.439,
+        "upwr_raw": 2.232,
+        "revising_partials": 777,
+        "word_lag_p50_s": 0.7,
+        "word_lag_p95_s": 8.3
+      },
+      "quality": {
+        "wer_offline": 10.721,
+        "wer_final": 10.643,
+        "delta_pp": -0.078,
+        "ci_pp": [
+          -0.2439,
+          0.0
+        ],
+        "raw_identical_to_offline": 159
+      },
+      "eligible": true,
+      "gate": "FAIL"
+    }
+  }
 }

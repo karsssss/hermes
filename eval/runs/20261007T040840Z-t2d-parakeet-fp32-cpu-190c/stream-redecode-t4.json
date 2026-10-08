@@ -1,0 +1,55 @@
+{
+  "threads": 4,
+  "policy": "redecode",
+  "hop_s": 0.5,
+  "right_context_s": 1.0,
+  "gate": {
+    "metric": "release-to-final latency p95, all 160 utterances, push-to-talk release",
+    "pass_ms": 300.0,
+    "marginal_ms": 450.0,
+    "eligibility": "final WER vs offline full decode: CI lower bound <= 0 and point <= +0.5 pp"
+  },
+  "pid": 18516,
+  "qos": {
+    "qos": "high",
+    "applied": true,
+    "control_mask": 1,
+    "state_mask": 0,
+    "priority_class": "0x20"
+  },
+  "started_utc": "2026-10-08T18:46:53Z",
+  "memory_before_load": {
+    "working_set_mb": 52.6,
+    "peak_working_set_mb": 52.6,
+    "private_mb": 388.7
+  },
+  "load_ms": 3500.6,
+  "memory_after_load": {
+    "working_set_mb": 2233.2,
+    "peak_working_set_mb": 2253.2,
+    "private_mb": 2567.9
+  },
+  "warmup_ms": 838.8,
+  "memory_after_decode": {
+    "working_set_mb": 2747.5,
+    "peak_working_set_mb": 2750.2,
+    "private_mb": 2860.8
+  },
+  "finished_utc": "2026-10-08T19:06:11Z",
+  "sessions": [
+    {
+      "tag": "stream-redecode-t4",
+      "policy": "redecode",
+      "threads": 4,
+      "qos": "high",
+      "started_utc": "2026-10-08T18:46:53Z",
+      "rows_present": 0,
+      "torn_bytes_dropped": 0,
+      "git": {
+        "sha": "f08876712b880c703c52c25d8d8aa2b8baa008ec",
+        "dirty": false
+      },
+      "t2d_py_sha256": "b59c011984ec96e8d8579d15f75ea180a4830249f4ea6aa7aec2a1505db47fe9"
+    }
+  ]
+}

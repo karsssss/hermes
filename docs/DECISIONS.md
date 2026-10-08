@@ -542,3 +542,54 @@ parity testing becomes tractable (two implementations agree to 3.5e-4 nats). A b
 quantization (static int8, fp16, sensitive-layer exclusion) could recover the memory and is a
 separate measurement. All of it is proxy-set WER: **FP32 has not been measured on personal
 speech**, and the gap is re-checked on the personal set (Task 1b).
+
+---
+
+## D-0016 — Task 2d: Parakeet FP32 fails the CPU streaming gate; 4 threads frozen, HighQoS required
+
+**Status:** accepted · 2026-10-08 · **refines D-0011** (CPU EP is not sufficient on its own for
+the interactive path) and **D-0015** (which chose the representation, not the finalization path)
+
+**Context.** D-0015 put Parakeet TDT 0.6B v3 FP32 on the ORT CPU EP for Phase 1, without
+measuring push-to-talk release-to-final latency. Task 2d did, with the gate pre-registered in
+`t2d.GATE`. The gate is p95 ≤ 300 ms PASS and ≤ 450 ms MARGINAL, and a finalization policy is
+eligible only if its WER is not resolved worse than the offline full decode. Full write-up:
+`docs/research/T2D-cpu-streaming.md`. Run: `20261007T040840Z-t2d-parakeet-fp32-cpu-190c`.
+
+**Decision.**
+
+- **CPU FP32 STREAMING: FAIL.** No measured CPU finalization policy qualifies for Phase 1.
+- **4 threads is frozen** for this machine's CPU path.
+- **The Phase 1 sidecar must opt out of Windows execution-speed throttling (HighQoS)** whenever
+  it runs ASR on the CPU.
+- The next Phase 0 blocker is **finalization architecture and acceleration**, not model
+  selection.
+
+**Rationale.**
+
+- **Offline throughput.** 3 clean full-corpus rounds at 4 threads with HighQoS: RTF 0.0694
+  (CV 1.5%), WER 10.721%, transcripts identical across rounds. HighQoS pilots put 2, 3, 5, 6 and
+  8 threads behind 4. Without HighQoS, Windows confined the windowless worker to the E-cores at
+  RTF 0.42.
+- **`redecode` (eligible, FAIL).** WER 10.643%, Δ −0.08 pp [−0.24, 0.00], 159/160 finals
+  identical to offline. Release-to-final p50 / p95 / p99 is 452 / **1339** / 1838 ms.
+- **LocalAgreement-2 `commit` (ineligible).** p95 443 ms, but WER 24.094%, Δ +13.37 pp
+  [+10.71, +16.32].
+- **Throughput is not the cause.** The CPU runs 14× faster than real time and finals cost what
+  the offline fit predicts. What fails is that a full-utterance final redecode costs
+  ~80 ms + 57 ms per audio-second and also waits for the in-flight partial (575 ms at p95), so
+  it exceeds 450 ms beyond ~6 s.
+- **Context-free tail commit** bounds that cost only by decoding each segment without left
+  context, which more than doubles word errors.
+
+**Consequences.**
+
+- DirectML/WinML (open question #14) is still unmeasured and becomes one of the two levers. The
+  other is a finalization design that is neither a full redecode nor a context-free commit:
+  in-flight cancellation, overlapped-context commit, or a cache-aware export. Either is a new
+  task with its own pre-registered gate; nothing here selects one.
+- Parakeet FP32 stays the front-runner (D-0013, D-0015) because its quality is intact under
+  `redecode`. Whisper large-v3-turbo, slower still on the CPU EP, inherits no streaming result.
+- The HighQoS opt-out mechanism the shipped sidecar will use is unmeasured.
+- The thread count and QoS finding are for this laptop (4 SMT P-cores, 4 E-cores, 16 GB).
+- All quality figures are proxy-set WER, not F-WER.
