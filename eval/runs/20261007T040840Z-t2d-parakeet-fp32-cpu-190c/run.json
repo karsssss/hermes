@@ -1,0 +1,170 @@
+{
+  "run_id": "20261007T040840Z-t2d-parakeet-fp32-cpu-190c",
+  "task": "Phase 0 Task 2d - Parakeet FP32 CPU thread sweep and streaming gate",
+  "started_utc": "2026-10-07T04:08:40Z",
+  "preflight": {
+    "git": {
+      "sha": "ce9c773eed59956764e916a65e37bd411ec61966",
+      "dirty": false
+    },
+    "hardware": {
+      "platform": "Windows-10-10.0.26200-SP0",
+      "os_version": "10.0.26200",
+      "machine": "AMD64",
+      "processor": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+      "logical_cores": 12,
+      "total_ram_gb": 15.73,
+      "gpu": "NVIDIA GeForce RTX 4050 Laptop GPU, 566.24, 6141 MiB"
+    },
+    "software": {
+      "harness_version": "0.1.0",
+      "python": "3.11.14",
+      "python_implementation": "CPython",
+      "omp_num_threads": null,
+      "sherpa_onnx": "1.13.8",
+      "onnxruntime": "1.28.0",
+      "ort_providers": [
+        "AzureExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "sherpa_ort_dll_sha256": "14e186627f109a15f28f0b36f6e8ea07c79eac666818e63c39a9792f415bf649"
+    },
+    "model_files": {
+      "encoder.onnx": "3eed7ce424bf8339ad09233533c687e2dbd07e74ccf5027b5e7344019ea373b0",
+      "decoder.onnx": "d593cdb0e571f5a457ec2219af9968cbf6b0e8198e8f7839b40a8754593bf68c",
+      "joiner.onnx": "b9b0bcf88ac571902e69a6536223ed2d94885e981b85045410f1403d53121a63",
+      "tokens.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+      "encoder.weights": "3af3f51af5f2d01dbbf5af47d42c7962a2c205f11004254bb4f2b979862f39a8"
+    },
+    "topology": {
+      "p_logical": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "e_logical": [
+        8,
+        9,
+        10,
+        11
+      ],
+      "cores": [
+        {
+          "efficiency_class": 1,
+          "smt": true,
+          "logical": [
+            0,
+            1
+          ]
+        },
+        {
+          "efficiency_class": 1,
+          "smt": true,
+          "logical": [
+            2,
+            3
+          ]
+        },
+        {
+          "efficiency_class": 1,
+          "smt": true,
+          "logical": [
+            4,
+            5
+          ]
+        },
+        {
+          "efficiency_class": 1,
+          "smt": true,
+          "logical": [
+            6,
+            7
+          ]
+        },
+        {
+          "efficiency_class": 0,
+          "smt": false,
+          "logical": [
+            8
+          ]
+        },
+        {
+          "efficiency_class": 0,
+          "smt": false,
+          "logical": [
+            9
+          ]
+        },
+        {
+          "efficiency_class": 0,
+          "smt": false,
+          "logical": [
+            10
+          ]
+        },
+        {
+          "efficiency_class": 0,
+          "smt": false,
+          "logical": [
+            11
+          ]
+        }
+      ],
+      "source": "GetLogicalProcessorInformationEx(RelationProcessorCore)"
+    },
+    "power_scheme": "GUID \u0441\u0445\u0435\u043c\u044b \u043f\u0438\u0442\u0430\u043d\u0438\u044f: 381b4222-f694-41f0-9685-ff5bb260df2e  (\u0421\u0431\u0430\u043b\u0430\u043d\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f)",
+    "on_ac": "True",
+    "memory": "total_mb=16\u00a0108 available_mb=8\u00a0268",
+    "asr_processes": [
+      "13664:python",
+      "31976:python"
+    ],
+    "own_pids": [
+      31976,
+      13664
+    ],
+    "t2d_py_sha256": "08fbc40fee3b3ee9b49dabda52b4358cbb3ff28e0723416d9d7c97f978e04cd8",
+    "affinity_priority_power_plan_changed": false
+  },
+  "manifest": {
+    "path": "eval/datasets/public-proxy-v1/manifest.jsonl",
+    "sha256": "2b3a46ede2700f30479a218abcdf0f3d55d12c2610dfeb82575e0595c9d7053e",
+    "n": 160
+  },
+  "config": {
+    "arm": {
+      "precision": "fp32",
+      "model_dir": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-fp32",
+      "encoder": "encoder.onnx",
+      "decoder": "decoder.onnx",
+      "joiner": "joiner.onnx",
+      "extra_files": [
+        "encoder.weights"
+      ]
+    },
+    "provider": "cpu",
+    "decoding_method": "greedy_search",
+    "threads": [
+      4
+    ],
+    "rounds": 3,
+    "orders": [
+      [
+        4
+      ],
+      [
+        4
+      ],
+      [
+        4
+      ]
+    ],
+    "sample_interval_s": 0.5,
+    "qos": "high"
+  }
+}

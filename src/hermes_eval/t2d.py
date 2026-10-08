@@ -21,6 +21,11 @@ export can run (it is not cache-aware): partials are re-decodes at a fixed hop, 
 final is produced at push-to-talk release. Two finalization policies are measured — see
 `stream_utterance`.
 
+`stream` is resume-safe: each utterance row is fsynced as it completes, a rerun of the
+same command skips completed ids and completed policies, cuts only a torn final line, and
+refuses (changing nothing) on a malformed or duplicate row. Every streaming session is
+appended to run.json as `stream_sessions` with its git SHA and the rows already present.
+
 **`--qos`.** The first (interrupted) Task 2d run found that with Windows left to decide
 (`default`), a windowless worker ran entirely on the E-cores, and extra threads only
 oversubscribed them. `high` opts the process out of execution-speed throttling — see
@@ -216,6 +221,7 @@ class Sampler:
         self.stop = run_dir / f".{name}.stop"
 
     def __enter__(self) -> Sampler:
+        _cut_torn(self.out, _read_appended(self.out)[1])  # resumed runs append to it
         self.stop.unlink(missing_ok=True)
         cmd = [sys.executable, "-m", "hermes_eval.t2d", "sample", str(self.out), str(self.stop)]
         self.proc = subprocess.Popen(cmd, cwd=REPO)
@@ -519,11 +525,122 @@ def stream_utterance(rec: Any, samples: Any, rate: int, policy: str) -> dict[str
     }
 
 
+def _read_appended(path: Path) -> tuple[list[dict[str, Any]], int]:
+    """Rows of an append-only JSONL file, and the length of a torn final line, if any.
+
+    A record is written as one line plus its newline, so after a power loss only the last
+    line can be unterminated. Every terminated line must parse — a malformed one is an
+    error, never silently dropped. Reads only; `_cut_torn` removes the fragment.
+    """
+    if not path.exists():
+        return [], 0
+    raw = path.read_bytes()
+    keep = raw.rfind(b"\n") + 1
+    rows: list[dict[str, Any]] = []
+    for n, line in enumerate(raw[:keep].split(b"\n")[:-1], start=1):
+        try:
+            row = json.loads(line)
+        except ValueError as e:
+            raise ValueError(f"{path.name}:{n}: malformed record; refusing to resume") from e
+        if not isinstance(row, dict):
+            raise ValueError(f"{path.name}:{n}: record is not an object; refusing to resume")
+        rows.append(row)
+    return rows, len(raw) - keep
+
+
+def _cut_torn(path: Path, torn: int) -> None:
+    if torn:
+        with path.open("r+b") as f:
+            f.truncate(path.stat().st_size - torn)
+            f.flush()
+            os.fsync(f.fileno())
+
+
+def _stream_done(path: Path, ids: Sequence[str]) -> tuple[set[str], int]:
+    """Utterance ids already streamed into `path`, and the torn bytes at its end."""
+    rows, torn = _read_appended(path)
+    known, done = set(ids), set()
+    for n, row in enumerate(rows, start=1):
+        rid = row.get("id")
+        if rid not in known:
+            raise ValueError(f"{path.name}:{n}: id {rid!r} is not in the manifest")
+        if rid in done:
+            raise ValueError(f"{path.name}:{n}: duplicate id {rid!r}; refusing to resume")
+        done.add(rid)
+    return done, torn
+
+
+def _stream_complete(run_dir: Path, tag: str, ids: Sequence[str]) -> bool:
+    """A policy is complete when its summary exists and every manifest id has a row."""
+    done, _ = _stream_done(run_dir / f"{tag}.jsonl", ids)
+    if not (run_dir / f"{tag}.json").exists():
+        return False
+    if len(done) != len(ids):
+        raise ValueError(f"{tag}.json exists but only {len(done)}/{len(ids)} rows do")
+    return True
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _record_session(run_dir: Path, session: dict[str, Any]) -> list[dict[str, Any]]:
+    """Append one streaming session to run.json; return this tag's sessions so far.
+
+    A policy's rows may span sessions only if they all ran the same t2d.py and QoS.
+    """
+    run_path = run_dir / "run.json"
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    sessions = run.setdefault("stream_sessions", [])
+    mine = [s for s in sessions if s["tag"] == session["tag"]]
+    for key in ("t2d_py_sha256", "qos"):
+        if mine and mine[0][key] != session[key]:
+            raise ValueError(
+                f"{session['tag']}: {key} {session[key]!r} differs from the earlier session's "
+                f"{mine[0][key]!r}; refusing to mix them in one result"
+            )
+    sessions.append(session)
+    _write_atomic(run_path, json.dumps(run, indent=2) + "\n")
+    return [*mine, session]
+
+
 def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -> None:
-    from .asr_sherpa import read_wav
+    """Stream every manifest utterance not already in this policy's JSONL, appending.
+
+    Resume-safe: each row is flushed and fsynced as it completes, completed ids are
+    skipped, and each session is recorded in run.json (`stream_sessions`). The summary's
+    load, QoS and memory fields describe the last session.
+    """
+    from .asr_sherpa import _sha256, read_wav
 
     tag = f"stream-{policy}-t{threads}"
+    path = run_dir / f"{tag}.jsonl"
     records = load_strict(MANIFEST).records
+    ids = [r.id for r in records]
+    if _stream_complete(run_dir, tag, ids):
+        print(f"[{tag}] complete, skipping", flush=True)
+        return
+    done, torn = _stream_done(path, ids)  # validates everything before anything is changed
+    sessions = _record_session(
+        run_dir,
+        {
+            "tag": tag,
+            "policy": policy,
+            "threads": threads,
+            "qos": qos,
+            "started_utc": utc_now(),
+            "rows_present": len(done),
+            "torn_bytes_dropped": torn,
+            "git": git_state(REPO),
+            "t2d_py_sha256": _sha256(Path(__file__)),
+        },
+    )
+    _cut_torn(path, torn)  # the torn utterance is not in `done`, so it is redone
     summary: dict[str, Any] = {
         "threads": threads,
         "policy": policy,
@@ -536,8 +653,10 @@ def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -
     }
     rec, info = load_recognizer(threads)
     summary.update(info)
-    with (run_dir / f"{tag}.jsonl").open("w", encoding="utf-8") as sink:
+    with path.open("a", encoding="utf-8") as sink:
         for n, record in enumerate(records, start=1):
+            if record.id in done:
+                continue
             samples, rate, _ = read_wav(record.audio)
             t_wall = time.time()
             out = stream_utterance(rec, samples, rate, policy)
@@ -549,6 +668,8 @@ def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -
                 **out,
             }
             sink.write(json.dumps(row, ensure_ascii=False) + "\n")
+            sink.flush()
+            os.fsync(sink.fileno())
             f = out["final"]
             print(
                 f"[{tag} {n}/{len(records)}] {record.id} {len(out['partials'])} partials, "
@@ -557,13 +678,22 @@ def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -
             )
     summary["memory_after_decode"] = _ws()
     summary["finished_utc"] = utc_now()
-    (run_dir / f"{tag}.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    summary["sessions"] = sessions
+    _write_atomic(run_dir / f"{tag}.json", json.dumps(summary, indent=2) + "\n")
 
 
 def stream(run_dir: Path, threads: int, policies: Sequence[str], qos: str) -> None:
+    """Run each policy in its own worker; a policy that already completed is not rerun."""
+    ids = [r.id for r in load_strict(MANIFEST).records]
+    todo = [p for p in policies if not _stream_complete(run_dir, f"stream-{p}-t{threads}", ids)]
+    for p in policies:
+        if p not in todo:
+            print(f"[stream-{p}-t{threads}] complete, skipping", flush=True)
+    if not todo:
+        return
     with Sampler(run_dir, f"counters-stream-t{threads}"):
         time.sleep(10.0)
-        for policy in policies:
+        for policy in todo:
             cmd = [sys.executable, "-m", "hermes_eval.t2d", "stream-worker", str(run_dir)]
             subprocess.run([*cmd, str(threads), policy, qos], check=True, cwd=REPO)
             time.sleep(5.0)

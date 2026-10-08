@@ -1,0 +1,129 @@
+{
+  "generated_utc": "2026-10-08T18:28:50Z",
+  "gate": {
+    "metric": "release-to-final latency p95, all 160 utterances, push-to-talk release",
+    "pass_ms": 300.0,
+    "marginal_ms": 450.0,
+    "eligibility": "final WER vs offline full decode: CI lower bound <= 0 and point <= +0.5 pp"
+  },
+  "sweep": {
+    "configs": {
+      "4": {
+        "reps": {
+          "1": {
+            "rtf": 0.0692,
+            "p50_ms": 381.3,
+            "p95_ms": 953.5,
+            "cores_busy": 9.14,
+            "peak_ws_mb": 2736.2,
+            "load_ms": 3481.8,
+            "fast_rows": 0,
+            "slow_rows": 0,
+            "wer": 10.721
+          },
+          "2": {
+            "rtf": 0.0685,
+            "p50_ms": 369.3,
+            "p95_ms": 950.4,
+            "cores_busy": 9.18,
+            "peak_ws_mb": 2736.2,
+            "load_ms": 3466.6,
+            "fast_rows": 0,
+            "slow_rows": 0,
+            "wer": 10.721
+          },
+          "3": {
+            "rtf": 0.0706,
+            "p50_ms": 385.0,
+            "p95_ms": 983.0,
+            "cores_busy": 9.11,
+            "peak_ws_mb": 2735.0,
+            "load_ms": 3561.1,
+            "fast_rows": 0,
+            "slow_rows": 2,
+            "wer": 10.721
+          }
+        },
+        "rtf_mean": 0.0694,
+        "rtf_cv_pct": 1.5,
+        "rtf_range": [
+          0.0685,
+          0.0706
+        ],
+        "pooled_p50_ms": 381.4,
+        "pooled_p95_ms": 970.2,
+        "pooled_p99_ms": 1070.0,
+        "median_ms_le_3s": 226.2,
+        "p95_ms_4to6s": 408.9,
+        "fit": {
+          "a_ms": 79.5,
+          "b_ms_per_s": 57.4,
+          "pred_5s_ms": 366.3
+        },
+        "texts_identical_across_rounds": true,
+        "texts_identical_to_t4": 160
+      }
+    },
+    "n_ids": 160,
+    "regime": {
+      "definition": "row decode_ms / median over rounds of same id and threads",
+      "fast_lt_0.67": {
+        "n": 0,
+        "p_busy": null,
+        "e_busy": null,
+        "p_perf": null,
+        "e_perf": null,
+        "page_in": null
+      },
+      "slow_gt_1.5": {
+        "n": 2,
+        "p_busy": 84.4,
+        "e_busy": 78.5,
+        "p_perf": 197.3,
+        "e_perf": 144.8,
+        "page_in": 0.0
+      },
+      "normal": {
+        "n": 478,
+        "p_busy": 83.8,
+        "e_busy": 88.3,
+        "p_perf": 197.8,
+        "e_perf": 139.3,
+        "page_in": 0.0
+      },
+      "slow_rows": [
+        {
+          "threads": 4,
+          "round": 3,
+          "id": "pp1-librispeech_test_clean-000674",
+          "decode_ms": 396.96,
+          "ratio": 1.543510381833735,
+          "sys": {
+            "p_busy": 84.4,
+            "e_busy": 78.5,
+            "p_perf": 203.0,
+            "e_perf": 164.5,
+            "page_in": 0.0,
+            "avail_mb_min": 5569.0
+          }
+        },
+        {
+          "threads": 4,
+          "round": 3,
+          "id": "pp1-golos_farfield_test-001218",
+          "decode_ms": 443.35,
+          "ratio": 1.529900962766141,
+          "sys": {
+            "p_busy": 92.6,
+            "e_busy": 96.5,
+            "p_perf": 197.3,
+            "e_perf": 144.8,
+            "page_in": 16.0,
+            "avail_mb_min": 5793.0
+          }
+        }
+      ]
+    }
+  },
+  "stream": {}
+}

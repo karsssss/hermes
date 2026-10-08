@@ -2,7 +2,7 @@
 
 The only doc expected to change every session. Read this first when resuming work.
 
-**Last updated:** 2026-10-06
+**Last updated:** 2026-10-08
 
 ## Where we are
 
@@ -12,7 +12,7 @@ decisions (D-0007…D-0011) were recorded, and six corrections were applied to
 `ARCHITECTURE.md`, `BENCHMARKS.md` and `CLAUDE.md`.
 
 **Phase 0 has started. The evaluation harness exists and passes its own tests.**
-`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 139 tests,
+`uv` is installed; `pyproject.toml`, `src/hermes_eval/` and `eval/` are on disk. 155 tests,
 ruff and pyright clean. Zero runtime dependencies — the scoring path is pure stdlib on
 purpose, because a published benchmark cannot blame its numbers on a third-party WER
 package.
@@ -63,13 +63,14 @@ fewer transcripts under inaudible dither, and agrees with a direct-ORT decode on
 127/160). Confidence ties. Cost: +1.74 GB resident (2.74 GB peak), 3.8× disk, ~2× load,
 +7–9% decode time. See **§ Task 2c — COMPLETE** below and `docs/research/T2C-precision.md`.
 
-**Task 2d (Parakeet FP32 CPU thread sweep / streaming latency gate) is INTERRUPTED —
-diagnostic only. No CPU streaming PASS/MARGINAL/FAIL decision has been made, no thread
-configuration is frozen or provisional, and the DirectML/WinML question is untouched.** The
-default-QoS round finished at 4/6/8 threads before Claude Code's memory-pressure reaper killed
-the sweep; 12 threads never started, and no streaming run happened. What it did establish is why
-Task 2c's timing swung: **Windows ran the worker on the 4 E-cores only**, and **severe paging**
-(available memory down to ~520 MB) contaminated every row. See **§ Task 2d — INTERRUPTED** below.
+**Task 2d (Parakeet FP32 CPU thread sweep / streaming latency gate) — OFFLINE BASELINE
+FROZEN, STREAMING NOT MEASURED.** On this machine, Parakeet FP32 on the ORT CPU EP runs at
+**4 threads (frozen) with `--qos high` (required)**. Three clean full-corpus rounds:
+**RTF 0.0694** mean (CV 1.5%), pooled p50 / p95 **381 / 970 ms** whole-utterance decode, **WER
+10.721%** with identical transcripts in all three rounds, no paging. Run:
+`eval/runs/20261007T040840Z-t2d-parakeet-fp32-cpu-190c`. **No CPU streaming PASS / MARGINAL /
+FAIL verdict exists; neither streaming policy has run.** The streaming worker is now
+resume-safe. DirectML/WinML is untouched. See **§ Task 2d** below.
 
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
@@ -428,7 +429,56 @@ above is proxy-set WER.
 Harness changes (committed in `4e403e5`): `src/hermes_eval/t2c.py` (new); `TdtProbe` takes
 `model_dir` and `files` (defaults unchanged).
 
-## Task 2d — INTERRUPTED (2026-10-06) — diagnostic only, no decision
+## Task 2d — offline baseline FROZEN (2026-10-07); streaming NOT MEASURED
+
+### Offline CPU baseline — 4 threads, HighQoS (frozen for this machine and configuration)
+
+| | |
+|---|---|
+| Run | `eval/runs/20261007T040840Z-t2d-parakeet-fp32-cpu-190c` — `run.json`, `offline-t4-r{1,2,3}.{json,jsonl}`, `counters.jsonl`, `analysis.json` (written 2026-10-08 by `t2d analyze`; reads only, no decoding). Promoted with `git add -f` |
+| Provenance | `t2d sweep --threads 4 --rounds 3 --qos high`, 2026-10-07 04:08–04:13Z, tree clean at `ce9c773` (`t2d.py` sha256 `08fbc40f…`); manifest `public-proxy-v1` sha256 `2b3a46ed…`, 160 rows; FP32 hashes = Task 2c (encoder `3eed7ce4…`); greedy search; on AC; ~8.3 GB available at pre-flight |
+| QoS | `high` applied and read back in every round (control mask 1, state 0, priority class unchanged) |
+| Rounds | 3 × 160/160 rows; RTF 0.0692 / 0.0685 / 0.0706 → **mean 0.0694, CV 1.5%** |
+| Latency | pooled p50 **381 ms**, p95 **970 ms**, p99 1070 ms; median 226 ms at ≤ 3 s audio; p95 409 ms at 4–6 s; fit 79.5 ms + 57.4 ms per audio-second (5 s → 366 ms) |
+| Quality | **WER 10.721%** in every round (= Task 2c FP32); transcripts identical across rounds |
+| System | P- and E-cores both ~80% busy (the worker is no longer confined to the E-cores); page-in median 0 per row; available memory ≥ 5.5 GB during decoding; 0 fast and 2 slow (> 1.5× median) rows of 480; peak working set 2.74 GB |
+
+**Why 4 threads.** Six HighQoS pilots (`eval/runs/20261007T0*-t2d-pilot-highqos-*`,
+local only: a 56-row every-third-utterance subset, round 1, run by an uncommitted pilot script,
+each comparison repeated in reversed order) put 4 threads ahead of 2, 3, 5, 6 and 8:
+RTF ≈ 0.096 (2), 0.075 (3), **0.068–0.069 (4)**, 0.091–0.094 (5), 0.146 (6), 0.21–0.22 (8).
+Beyond 4 threads every core is saturated and decode slows down. The pilots are supporting
+evidence only; the frozen figures above come from the full-corpus run. 12 threads was not run
+under HighQoS — at 8 it is already 3× slower.
+
+**Why HighQoS is required.** Without it (the 2026-10-06 run below) Windows kept the windowless
+worker on the 4 E-cores: RTF 0.42 at 4 threads, about 6× slower. The 0.0694 baseline holds only
+with execution-speed throttling opted out. This carries over to the product: the Phase 1
+sidecar must opt out too (not yet a decision record — the product mechanism is unmeasured).
+
+**What this does not settle.** These are whole-utterance offline decodes. The p95 of 970 ms is
+decode time for the full utterance from scratch; it is not release-to-final latency, which is
+what `t2d.GATE` judges. **The streaming verdict is NOT MEASURED.** Both policies (`redecode`,
+`commit`) are still to run against this run directory:
+```
+uv run --group asr python -m hermes_eval.t2d stream eval/runs/20261007T040840Z-t2d-parakeet-fp32-cpu-190c --threads 4 --qos high
+uv run python -m hermes_eval.t2d analyze eval/runs/20261007T040840Z-t2d-parakeet-fp32-cpu-190c
+```
+**The streaming command is resume-safe** (2026-10-08). Each row is fsynced as it completes.
+Rerunning the same command skips completed utterances and completed policies, and it cuts only
+a torn final line (that utterance is redone). It refuses, changing nothing, on a malformed
+interior line, a duplicate or unknown id, or a QoS or `t2d.py` hash that differs from an earlier
+session of the same policy. Every session is appended to `run.json` as `stream_sessions`: tag,
+policy, threads, QoS, start time, rows present, torn bytes cut, git state, `t2d.py` hash. The
+sampler cuts a torn line from its own counters file before appending. Streaming metrics,
+policies and the gate are unchanged.
+
+A power loss on 2026-10-08 happened after this baseline was written and before any streaming
+run started; recovery found no `stream-*` or `counters-stream*` files and every baseline file
+structurally valid.
+
+### First attempt — INTERRUPTED (2026-10-06) — diagnostic only
+
 
 Task 2d asks whether Parakeet TDT v3 **FP32 on the ORT CPU EP** is fit for the Phase 1
 interactive path: a bounded thread sweep (Part A), streaming behaviour (Part B), and a latency
@@ -471,18 +521,12 @@ only and must not be quoted as Parakeet's CPU latency.**
 Untouched by both contaminations: WER is **10.721%** at 4, 6 and 8 threads — Task 2c's FP32
 figure exactly; transcripts do not depend on thread count here.
 
-**To resume (not started):** free memory first (the model must stay resident), then
-```
-uv run --group asr python -m hermes_eval.t2d sweep --qos high --rounds 3      # ~60–75 min
-uv run --group asr python -m hermes_eval.t2d stream <run-dir> --threads N --qos high   # ~40 min
-uv run python -m hermes_eval.t2d analyze <run-dir>
-```
 The streaming gate is pre-registered in `t2d.GATE`, fixed before any streaming number existed:
 release-to-final p95 ≤ 300 ms PASS (ARCHITECTURE §8 final-ASR budget), ≤ 450 ms MARGINAL (700 ms
 end-to-end minus endpoint 150, NLP 50, injection 50; no correction pass per D-0009), else FAIL;
 a finalization policy counts only if its WER is not resolved worse than the offline full decode.
 
-Harness changes (this checkpoint): `src/hermes_eval/t2d.py` — `cpu_topology` (P/E split from
+Harness changes (checkpoint `ce9c773`): `src/hermes_eval/t2d.py` — `cpu_topology` (P/E split from
 `GetLogicalProcessorInformationEx`), a PDH sampler process (per-logical-CPU busy % and
 performance %, hard page-ins, available MB, via `PdhAddEnglishCounterW` because `typeperf`
 rejects English counter names on this Russian-locale Windows), `set_qos`, the offline sweep
@@ -569,9 +613,9 @@ order:
    it — it cannot compute either headline metric.
 4. int8-vs-fp32 joiner emission *timestamp* drift (WER is insensitive to this failure mode).
 5. Thread-count sweep on the P/E-core split — `-t 4/6/8/12`.
-   **Attempted 2026-10-06 (Task 2d), interrupted, diagnostic only:** at default QoS the worker
-   ran on the E-cores alone and paged heavily, so no thread count was measured fairly. Resume
-   with `t2d sweep --qos high` once memory is free. See § Task 2d.
+   **Answered for Parakeet FP32 on this machine, 2026-10-07 (Task 2d): 4 threads, HighQoS,
+   frozen** — RTF 0.0694 over three clean full-corpus rounds; 2/3/5/6/8 slower in HighQoS
+   pilots. Without HighQoS the worker is confined to the E-cores. See § Task 2d.
 6. Confidence signal quality on **accented and code-switched** speech — the gap that
    matters most for our user. *Accented English measured on the proxy set by Task 2b
    (AUROC 0.863); code-switched speech and the user's own voice still need Task 1b.*
@@ -723,6 +767,10 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
   `4e403e5` dirty (`t2d.py` then uncommitted; the offline worker and sampler are unchanged in
   the committed file apart from the added `qos` argument). It is evidence for two findings, not
   a Task 2d result.
+- **Task 2d offline baseline is committed** (`phase0: persist CPU baseline and harden streaming
+  resume`): the run `eval/runs/20261007T040840Z-t2d-parakeet-fp32-cpu-190c` with its
+  `analysis.json`, the resume-safe streaming worker and its tests, and this section. Collected
+  at `ce9c773` clean. The HighQoS pilot runs are not committed.
 - **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
   `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
   `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and

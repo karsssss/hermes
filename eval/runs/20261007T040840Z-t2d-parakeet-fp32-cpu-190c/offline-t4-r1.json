@@ -1,0 +1,33 @@
+{
+  "threads": 4,
+  "round": 1,
+  "pid": 38584,
+  "qos": {
+    "qos": "high",
+    "applied": true,
+    "control_mask": 1,
+    "state_mask": 0,
+    "priority_class": "0x20"
+  },
+  "started_utc": "2026-10-07T04:09:04Z",
+  "memory_before_load": {
+    "working_set_mb": 52.4,
+    "peak_working_set_mb": 52.4,
+    "private_mb": 388.6
+  },
+  "load_ms": 3481.8,
+  "memory_after_load": {
+    "working_set_mb": 2233.1,
+    "peak_working_set_mb": 2253.1,
+    "private_mb": 2567.9
+  },
+  "warmup_ms": 932.3,
+  "decode_wall_s": 73.66,
+  "decode_cpu_s": 673.56,
+  "memory_after_decode": {
+    "working_set_mb": 2734.8,
+    "peak_working_set_mb": 2736.2,
+    "private_mb": 2848.4
+  },
+  "finished_utc": "2026-10-07T04:10:22Z"
+}
