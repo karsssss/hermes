@@ -593,3 +593,59 @@ eligible only if its WER is not resolved worse than the offline full decode. Ful
 - The HighQoS opt-out mechanism the shipped sidecar will use is unmeasured.
 - The thread count and QoS finding are for this laptop (4 SMT P-cores, 4 E-cores, 16 GB).
 - All quality figures are proxy-set WER, not F-WER.
+
+---
+
+## D-0017 — Task 2e: overlap-based CPU finalization is ruled out; accelerate full redecode next
+
+**Status:** accepted · 2026-10-09 · **refines D-0016** (closes its "overlapped-context commit"
+lever)
+
+**Context.** D-0016 left two levers against the finalization blocker: a finalization design that
+is neither full redecode nor context-free commit, or execution-provider acceleration. Task 2e
+tested the cheapest form of the first: Task 2d's LocalAgreement-2 `commit`, but with every tail
+decode (partials and final) re-reading a bounded 1, 2 or 3 s of already-committed audio, and
+re-read words dropped by timestamp midpoint. Model, FP32, CPU EP, 4 threads, HighQoS, hop, right
+context, `t2d.GATE` and the eligibility rule were unchanged; arms, a 40-row screen subset and the
+elimination rule were pre-registered in `hermes_eval.t2e`. Full write-up:
+`docs/research/T2E-finalization.md`. Run: `20261009T193507Z-t2e-overlap-finalization-9264`.
+
+**Decision.**
+
+- **CPU FINALIZATION NOT RESCUED.** Bounded acoustic left overlap does not preserve
+  offline-quality WER, so no commit-family policy is eligible on the CPU path.
+- **No further overlap tuning.** A commit-family path is reopened only by **true state
+  continuity** (a cache-aware streaming export), not by larger or differently stitched overlap.
+- **Full-utterance `redecode` remains the Phase 1 finalization policy of record** — the only
+  measured policy that preserves quality.
+- **The next experiment is execution-provider acceleration of full `redecode`** (DirectML/WinML,
+  open question #14), under its own pre-registered gate. **In-flight partial cancellation** is a
+  separate, orthogonal latency lever to be measured alongside it, **not a replacement** for
+  acceleration.
+
+**Rationale.**
+
+- **Stateful reuse is unavailable** on the current path: the offline export is full-context (no
+  encoder cache valid across a cut) and sherpa-onnx's `OfflineRecognizer` accepts no decoder
+  state.
+- **Context-free commit fails badly** (Task 2d: +13.37 pp [+10.71, +16.32]).
+- **Overlap helps but not enough.** WER Δ vs offline on the screen: L=1 +7.8 pp [+4.4, +11.7],
+  L=2 +5.0 [+1.3, +9.0], L=3 +6.4 [+2.7, +10.1]; all fail the pre-registered quality rule, so no
+  arm was retained and the 160-row gate was correctly not run. Boundary substitutions,
+  hallucinations and drops fall 3–7×; duplicates do not fall (13–16 per 100 cuts).
+- **The failure mode is independent tail decoding + timestamp stitching.** Two independent
+  decodes disagree on an abutting word's timestamp by a frame, so the word crosses the cut and
+  is emitted twice; overlap also produces more cuts. Even removing every cross-cut duplicate
+  post hoc leaves the best arm at +1.4 pp with deletions doubled.
+- **The verdict rests on quality alone.** Screen latencies were contaminated (memory fell to
+  4.27 GB; the L=0 control — Task 2d `commit` itself — ran p95 753 ms vs 443 ms on the same rows)
+  and are not decision-grade.
+
+**Consequences.**
+
+- On this export and this CPU there is no finalization policy that is both offline-quality and
+  inside 450 ms. Redecode needs its release-to-final sum (final compute p95 863 ms + in-flight
+  wait p95 575 ms) cut roughly 3×.
+- Whether a cache-aware streaming Parakeet export exists at FP32 quality is open and unmeasured.
+- DirectML/WinML remains unmeasured; nothing here says it passes.
+- All quality figures are proxy-set WER, not F-WER.

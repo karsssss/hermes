@@ -2,7 +2,7 @@
 
 The only doc expected to change every session. Read this first when resuming work.
 
-**Last updated:** 2026-10-08
+**Last updated:** 2026-10-09
 
 ## Where we are
 
@@ -75,6 +75,18 @@ D-0016**; write-up `docs/research/T2D-cpu-streaming.md`. HighQoS is now a Phase 
 the Windows CPU path. DirectML/WinML is still unmeasured. **The next blocker is finalization
 architecture and acceleration, not model selection.** See **§ Task 2d** below.
 
+**Task 2e (context-preserving finalization gate) — COMPLETE: CPU FINALIZATION NOT RESCUED
+(2026-10-09).** LocalAgreement-2 `commit` with bounded acoustic left overlap (every tail
+decode re-reads 1, 2 or 3 s of committed audio; re-read words dropped by timestamp midpoint)
+cuts boundary substitutions, drops and hallucinations ~3–6×, but every arm stays resolved
+worse than offline: **+7.8 / +5.0 / +6.4 pp WER** (CIs clear of zero) on a pre-registered
+40-row screen, so none was eligible and the full 160-row gate was not run. The remaining
+damage is duplicated and dropped words at the stitch, where two decodes disagree on a
+boundary word's timestamp. Screen latency was contaminated (the L=0 control ran 1.7× slower at p95
+than Task 2d on the same rows) and is not decision-grade; the verdict rests on quality. **Next:
+execution-provider acceleration of the full `redecode` final.** **Recorded as D-0017**;
+write-up `docs/research/T2E-finalization.md`. See **§ Task 2e** below.
+
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
 ship.
@@ -84,7 +96,7 @@ ship.
 1. `CLAUDE.md` — invariants and vocabulary
 2. **`docs/SYNTHESIS.md`** — the decision document; supersedes `ARCHITECTURE.md` where they
    disagree
-3. `docs/DECISIONS.md` — D-0001…D-0016
+3. `docs/DECISIONS.md` — D-0001…D-0017
 4. `docs/ROADMAP.md` — phases and checkpoints (Phase 1 scope is narrowed by SYNTHESIS §19)
 5. `docs/research/R1…R9` — evidence, only as needed
 
@@ -506,6 +518,111 @@ gate was not run as a thread sweep.
 7. **The next blocker is finalization architecture and acceleration, not model selection.**
    Parakeet FP32's quality survives `redecode` intact (159/160 finals identical to offline).
 
+## Task 2e — COMPLETE: CPU FINALIZATION NOT RESCUED (2026-10-09)
+
+**The question.** Can a bounded context-preserving finalization policy keep offline-quality WER
+while keeping release-to-final p95 ≤ 450 ms on the CPU? **No — not with acoustic overlap.**
+
+**Design.** The approaches were tried in the brief's order:
+1. **Reusing cached state is not available.** The export is offline and full-context, so no
+   encoder cache is valid across a cut. sherpa's `OfflineRecognizer` accepts no decoder
+   state, and re-seeding the decoder would mean switching to the owned Python loop
+   (`tdt_probe`), a new decoder path. Even that would leave the encoder starting cold at every
+   cut.
+2. **Bounded acoustic left overlap was chosen.** Task 2d `commit` is unchanged: 0.5 s hop,
+   1.0 s right context, LocalAgreement-2, the same cut placement. Every tail decode, **partials
+   and final alike**, starts L s before the cut (clamped at 0). Task 2d's commit errors were in
+   committed words too, so overlapping only the final would not have helped.
+3. **Stitching is by timestamp.** Decoded words carry absolute times, and a word belongs to the
+   tail iff its midpoint is at or after the cut; overlap words are the already-committed text
+   and are dropped. There is no text dedupe.
+
+L = 0 is byte-for-byte Task 2d `commit` and ran as a drift control (`t2d._decode_tail`).
+
+**Pre-registered before any Task 2e number** (`hermes_eval.t2e`):
+- **Arms.** L ∈ {1, 2, 3} s, plus the L=0 control.
+- **Screen subset.** `records[1::4]`, 40 rows: all 7 subsets, en 28 / ru 12, 7 rows ≤ 3 s and
+  7 rows > 10 s. It was chosen because it reproduces Task 2d's full-set latency (commit p95 443
+  vs 443, redecode 1335 vs 1339).
+- **Elimination.** An arm is out if its screen p95 > 500 ms, or its WER Δ > +1.0 pp, or its CI
+  low > 0.
+- **Retention.** At most one arm.
+- **Gate.** `t2d.GATE` and eligibility, unchanged.
+
+| | |
+|---|---|
+| Run | `eval/runs/20261009T193507Z-t2e-overlap-finalization-9264` — `run.json`, `screen-commit-L{0,1,2,3}.0-t4.{json,jsonl}`, `counters-screen.jsonl`, `analysis.json` (promoted with `git add -f`) |
+| Provenance | 2026-10-09 19:35Z, HEAD `8c22264` **dirty** (Task 2e code uncommitted: `t2d.py` `a7cebe28…`, `t2e.py` `dda7bf24…`); FP32 / ORT / sherpa / DLL = Task 2d; 4 threads; QoS high read back (mask 1, state 0) in all four workers; one session per arm, 40/40 rows each |
+| Contamination | Pre-flight 6.76 GB available, but Edge stayed open (~2.6 GB); available memory fell to **4.27 GB** during the run (under the 6 GB floor), ~1.4 GB paged in, CPU 81% busy median. **The L=0 control ran p95 753 ms vs Task 2d's 443 on the same 40 rows, with compute p50 232 vs 168 ms. Absolute latencies below are not decision-grade.** |
+
+| 40-row screen | L=0 (control) | L=1.0 | L=2.0 | L=3.0 | Task 2d commit, same rows |
+|---|---:|---:|---:|---:|---:|
+| release-to-final p50 / p95 ms | 279 / 753 | 336 / 748 | 455 / 866 | 517 / 720 | 190 / 443 |
+| in-flight wait p95 / final compute p95 ms | 211 / 584 | 318 / 467 | 368 / 525 | 340 / 444 | 152 / 269 |
+| final audio decoded p50 / p95 s (tail p95) | 2.2 / 6.9 (6.9) | 2.8 / 4.7 (3.7) | 3.5 / 6.3 (4.3) | 4.3 / 5.3 (2.6) | 2.2 / 3.7 |
+| **WER** (offline 12.34% on these rows) | 29.06 | 20.16 | **17.34** | 18.75 | 24.69 |
+| **Δ pp [95% CI]** | +16.7 [+10.5, +24.0] | +7.8 [+4.4, +11.7] | **+5.0 [+1.3, +9.0]** | +6.4 [+2.7, +10.1] | +12.3 [+8.3, +16.6] |
+| S / I / D (offline 43 / 19 / 17) | 86 / 46 / 54 | 48 / 51 / 30 | 35 / 47 / 29 | 41 / 47 / 32 | 69 / 42 / 47 |
+| en / ru WER (offline 11.99 / 13.82) | 29.4 / 27.6 | 21.1 / 16.3 | 18.4 / 13.0 | 19.9 / 13.8 | 24.0 / 27.6 |
+| finals identical to offline | 2 | 7 | 12 | 11 | 2 |
+| cuts | 143 | 195 | 217 | 232 | 144 |
+| divergences from offline per 100 cuts (within 0.5 s of a cut) | 105 (70) | 45 (35) | 31 (26) | 31 (25) | 91 (74) |
+| └ duplicate / drop / hallucination / substitution, per 100 cuts | 10.5 / 23.1 / 9.8 / 26.6 | 15.9 / 8.7 / 2.1 / 8.7 | 12.9 / 6.5 / 2.3 / 4.1 | 12.9 / 7.3 / 1.3 / 3.9 | 11.8 / 27.8 / 8.3 / 25.7 |
+| screen decision | control | out (WER; p95 748) | out (WER; p95 866) | out (WER; p95 720) | — |
+
+**Verdict: CPU FINALIZATION NOT RESCUED.** No arm survived the screen, so the 160-row gate was
+not run (by pre-registration). **The elimination rests on quality, which is independent of the
+latency contamination:** every overlap arm is resolved worse than offline and fails the
+unchanged eligibility rule (CI low ≤ 0 and Δ ≤ +0.5 pp) by a wide margin.
+
+**Why overlap is not enough.**
+- **Left context works on what it targets.** Boundary substitutions fall ~6×, hallucinated
+  fillers ~4–7× and drops ~3× against the control, and Russian returns to offline at L ≥ 2.
+- **Duplicates do not fall at all.** They stay at ~13–16 per 100 cuts, and insertions stay at
+  2.5× offline.
+- **The cause is timestamp disagreement between decodes.** When words abut, the cut sits at
+  the next word's onset; a re-decode heard with different context shifts the committed word
+  one 80 ms frame later, so its midpoint crosses the cut and it is emitted twice. Example:
+  `was` [2.32, 2.48] committed, then `was` [2.40, 2.56] re-emitted, with the cut at 2.48.
+- **More cuts, more exposure.** Context-aware partials agree more often, so overlap makes
+  *more* cuts (195–232 against 143), each one a stitch.
+- **A better stitcher would not close the gap (post-hoc, not used for the decision).** Even
+  deleting every cross-cut adjacent duplicate, the best arm (L=2) is still 13.75%, +1.4 pp,
+  with deletions at 2× offline (17 → 36).
+
+**Latency, read with the contamination in mind.** Overlap raises latency in proportion to L.
+Final compute and the in-flight wait both grow, because every partial now decodes L more
+seconds, and median latency rose from 279 ms (control) to 336 / 455 / 517 ms. Scaled by the
+control's drift, L=1 might land near 450 ms at p95 on a clean machine, and L ≥ 2 would not. This
+does not change the verdict.
+
+**What this establishes.**
+1. **On this export, no CPU finalization path is both offline-quality and inside 450 ms.**
+   `redecode` keeps quality but has p95 1339 ms (Task 2d). Commit-family policies, with or
+   without bounded overlap, lose ≥ 5 pp.
+2. **Stitching across independently decoded windows is the failure, not the absence of
+   context alone.** A commit-based design would need state continuity, i.e. a cache-aware
+   streaming export, rather than more overlap.
+3. **The next experiment should be execution-provider acceleration of the full `redecode`
+   final.** That is DirectML/WinML, open question #14. Redecode is the only policy that
+   preserves quality (159/160 finals identical to offline). Its failure is ~57 ms per
+   audio-second of final compute plus the in-flight partial wait (575 ms at p95), and an EP
+   attacks the first directly. Cancelling the in-flight partial at release is a cheap,
+   orthogonal lever on the second, and should be measured in the same task with its own
+   pre-registration. To reach p95 ≤ 450 ms, final compute p95 (863 ms) must fall roughly 2–3×,
+   together with the wait.
+
+**Harness changes (committed with the write-up).**
+- `t2d._decode_tail`: the tail decode with optional left context. `stream_utterance` and
+  `run_stream` take `left_s`; `run_stream` also takes `only` and `tag`. Rows gain `lo` and
+  `decoded_s`.
+- `src/hermes_eval/t2e.py`: `screen`, `gate`, `worker`, `analyze`. It refuses below 6 GB
+  available at start, and `gate` refuses any L that the screen did not retain.
+- `tests/test_t2e.py`: stitching, clamping, the straddling word, boundary attribution and the
+  selection rule.
+- The fake streamer in `tests/test_t2d.py` accepts `left_s`.
+- 161 tests pass; ruff and pyright are clean. With L=0 the path is Task 2d's `commit` exactly.
+
 ### Offline CPU baseline — 4 threads, HighQoS (frozen for this machine and configuration)
 
 | | |
@@ -622,8 +739,12 @@ engineering task is **not** another model comparison. It is either (a) a finaliz
 that is neither a full redecode nor a context-free commit (in-flight cancellation,
 overlapped-context commit, a cache-aware export), or (b) acceleration through DirectML/WinML
 (open question #14). Each needs its own pre-registered gate, and nothing selects between them
-yet. **Task 2e has not been started.** Task 1b below still needs a human with a microphone and
-is independent of this.
+yet. **Task 2e (2026-10-09) closed lever (a) for acoustic overlap: CPU FINALIZATION NOT
+RESCUED.** Bounded left overlap cannot hold offline WER (best +5.0 pp). The next experiment is
+**(b): execution-provider acceleration of the full `redecode` final**, with in-flight
+cancellation measured alongside, under its own pre-registered gate. A cache-aware export
+remains the only commit-family route left. Task 1b below still needs a human with a
+microphone and is independent of this.
 
 ### THE NEXT ACTION — record the personal eval set (Task 1b)
 
@@ -835,6 +956,7 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 - **D-0014** Task 2b keeps the confidence / N-best contract; N-best from an owned Python decode loop
 - **D-0015** Task 2c: Parakeet ships as the FP32 export; INT8 is the low-memory fallback
 - **D-0016** Task 2d: Parakeet FP32 fails the CPU streaming gate; 4 threads frozen, HighQoS required
+- **D-0017** Task 2e: overlap-based CPU finalization ruled out; accelerate full redecode next
 
 ## Standing instructions
 
@@ -868,6 +990,12 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
   `stream_sessions` entries in `run.json`, the regenerated `analysis.json`, D-0016,
   `docs/research/T2D-cpu-streaming.md`, and this section. Collected at `f088767` clean (see the
   provenance note on the commit session's `dirty` flag above).
+- **Task 2e is committed** (`phase0: rule out overlap-based CPU finalization`): `t2e.py`,
+  `t2d._decode_tail` / `left_s`, `tests/test_t2e.py`, D-0017,
+  `docs/research/T2E-finalization.md`, the SYNTHESIS reconciliation, this section, and the
+  run `eval/runs/20261009T193507Z-t2e-overlap-finalization-9264` (`run.json`,
+  `screen-commit-L{0,1,2,3}.0-t4.{json,jsonl}`, `counters-screen.jsonl`, `analysis.json`).
+  Collected at `8c22264` dirty (Task 2e code then uncommitted, committed unchanged).
 - **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
   `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
   `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and

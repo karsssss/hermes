@@ -83,7 +83,7 @@ def fake_worker(monkeypatch, tmp_path):
     records = [SimpleNamespace(id=i, audio=i, metadata={}) for i in IDS]
     streamed: list[str] = []
 
-    def utterance(rec, samples, rate, policy):
+    def utterance(rec, samples, rate, policy, left_s=0.0):
         streamed.append(samples)
         return {"audio_s": 1.0, "partials": [], "final": {"latency_ms": 1.0, "inflight_wait_ms": 0}}
 

@@ -1,0 +1,484 @@
+{
+  "generated_utc": "2026-10-09T19:56:00Z",
+  "gate": {},
+  "rule": {
+    "latency": "eliminate if screen release-to-final p95 > 500 ms (clearly beyond 450)",
+    "quality": "eliminate if screen WER delta vs offline > +1.0 pp, or its CI low > 0",
+    "retain": "at most one survivor: smallest WER delta; within 0.25 pp, the smaller left_s",
+    "control": "left_s 0 is Task 2d commit, run only to check drift; never retained"
+  },
+  "screen": {
+    "0.0": {
+      "n": 40,
+      "final": {
+        "latency_p50_ms": 279.3,
+        "latency_p95_ms": 752.9,
+        "latency_p99_ms": 1267.5,
+        "latency_max_ms": 1267.5,
+        "over_450": 6,
+        "inflight_wait_p50_ms": 47.4,
+        "inflight_wait_p95_ms": 211.3,
+        "compute_p50_ms": 231.7,
+        "compute_p95_ms": 584.1,
+        "tail_s_p50": 2.2,
+        "tail_s_p95": 6.9,
+        "decoded_s_p50": 2.2,
+        "decoded_s_p95": 6.9,
+        "by_duration": {
+          "le3s": {
+            "n": 7,
+            "p50_ms": 229.5,
+            "p95_ms": 407.6
+          },
+          "3to6s": {
+            "n": 13,
+            "p50_ms": 293.8,
+            "p95_ms": 525.5
+          },
+          "6to10s": {
+            "n": 13,
+            "p50_ms": 289.4,
+            "p95_ms": 752.9
+          },
+          "gt10s": {
+            "n": 7,
+            "p50_ms": 268.0,
+            "p95_ms": 1267.5
+          }
+        }
+      },
+      "partials": {
+        "compute_p50_ms": 214.0,
+        "compute_p95_ms": 418.2
+      },
+      "quality": {
+        "wer_offline": 12.344,
+        "wer_final": 29.063,
+        "delta_pp": 16.7188,
+        "ci_pp": [
+          10.4895,
+          23.9883
+        ],
+        "sid_offline": [
+          43,
+          19,
+          17
+        ],
+        "sid_final": [
+          86,
+          46,
+          54
+        ],
+        "wer_en_offline_final": [
+          11.992,
+          29.4
+        ],
+        "wer_ru_offline_final": [
+          13.821,
+          27.642
+        ],
+        "identical_to_offline": 2,
+        "worse_utts": 30,
+        "better_utts": 1
+      },
+      "boundary": {
+        "cuts": 143,
+        "div": 150,
+        "div_boundary": 100,
+        "dup": 15,
+        "drop": 33,
+        "halluc": 14,
+        "sub_boundary": 38,
+        "per_100_cuts": {
+          "div": 104.9,
+          "div_boundary": 69.9,
+          "dup": 10.5,
+          "drop": 23.1,
+          "halluc": 9.8,
+          "sub_boundary": 26.6
+        }
+      },
+      "eligible": false,
+      "gate": "FAIL"
+    },
+    "1.0": {
+      "n": 40,
+      "final": {
+        "latency_p50_ms": 335.5,
+        "latency_p95_ms": 748.3,
+        "latency_p99_ms": 821.2,
+        "latency_max_ms": 821.2,
+        "over_450": 11,
+        "inflight_wait_p50_ms": 69.5,
+        "inflight_wait_p95_ms": 317.5,
+        "compute_p50_ms": 264.0,
+        "compute_p95_ms": 467.2,
+        "tail_s_p50": 1.9,
+        "tail_s_p95": 3.7,
+        "decoded_s_p50": 2.8,
+        "decoded_s_p95": 4.7,
+        "by_duration": {
+          "le3s": {
+            "n": 7,
+            "p50_ms": 280.5,
+            "p95_ms": 748.3
+          },
+          "3to6s": {
+            "n": 13,
+            "p50_ms": 350.4,
+            "p95_ms": 542.4
+          },
+          "6to10s": {
+            "n": 13,
+            "p50_ms": 390.7,
+            "p95_ms": 692.3
+          },
+          "gt10s": {
+            "n": 7,
+            "p50_ms": 382.1,
+            "p95_ms": 821.2
+          }
+        }
+      },
+      "partials": {
+        "compute_p50_ms": 259.6,
+        "compute_p95_ms": 413.2
+      },
+      "quality": {
+        "wer_offline": 12.344,
+        "wer_final": 20.156,
+        "delta_pp": 7.8125,
+        "ci_pp": [
+          4.3774,
+          11.7104
+        ],
+        "sid_offline": [
+          43,
+          19,
+          17
+        ],
+        "sid_final": [
+          48,
+          51,
+          30
+        ],
+        "wer_en_offline_final": [
+          11.992,
+          21.083
+        ],
+        "wer_ru_offline_final": [
+          13.821,
+          16.26
+        ],
+        "identical_to_offline": 7,
+        "worse_utts": 23,
+        "better_utts": 3
+      },
+      "boundary": {
+        "cuts": 195,
+        "div": 87,
+        "div_boundary": 69,
+        "dup": 31,
+        "drop": 17,
+        "halluc": 4,
+        "sub_boundary": 17,
+        "per_100_cuts": {
+          "div": 44.6,
+          "div_boundary": 35.4,
+          "dup": 15.9,
+          "drop": 8.7,
+          "halluc": 2.1,
+          "sub_boundary": 8.7
+        }
+      },
+      "eligible": false,
+      "gate": "FAIL"
+    },
+    "2.0": {
+      "n": 40,
+      "final": {
+        "latency_p50_ms": 454.6,
+        "latency_p95_ms": 866.1,
+        "latency_p99_ms": 1132.5,
+        "latency_max_ms": 1132.5,
+        "over_450": 21,
+        "inflight_wait_p50_ms": 133.8,
+        "inflight_wait_p95_ms": 368.4,
+        "compute_p50_ms": 325.2,
+        "compute_p95_ms": 525.3,
+        "tail_s_p50": 1.8,
+        "tail_s_p95": 4.3,
+        "decoded_s_p50": 3.5,
+        "decoded_s_p95": 6.3,
+        "by_duration": {
+          "le3s": {
+            "n": 7,
+            "p50_ms": 266.8,
+            "p95_ms": 407.5
+          },
+          "3to6s": {
+            "n": 13,
+            "p50_ms": 454.6,
+            "p95_ms": 708.1
+          },
+          "6to10s": {
+            "n": 13,
+            "p50_ms": 542.5,
+            "p95_ms": 866.1
+          },
+          "gt10s": {
+            "n": 7,
+            "p50_ms": 500.9,
+            "p95_ms": 1132.5
+          }
+        }
+      },
+      "partials": {
+        "compute_p50_ms": 308.3,
+        "compute_p95_ms": 475.1
+      },
+      "quality": {
+        "wer_offline": 12.344,
+        "wer_final": 17.344,
+        "delta_pp": 5.0,
+        "ci_pp": [
+          1.3049,
+          8.9648
+        ],
+        "sid_offline": [
+          43,
+          19,
+          17
+        ],
+        "sid_final": [
+          35,
+          47,
+          29
+        ],
+        "wer_en_offline_final": [
+          11.992,
+          18.375
+        ],
+        "wer_ru_offline_final": [
+          13.821,
+          13.008
+        ],
+        "identical_to_offline": 12,
+        "worse_utts": 16,
+        "better_utts": 5
+      },
+      "boundary": {
+        "cuts": 217,
+        "div": 67,
+        "div_boundary": 56,
+        "dup": 28,
+        "drop": 14,
+        "halluc": 5,
+        "sub_boundary": 9,
+        "per_100_cuts": {
+          "div": 30.9,
+          "div_boundary": 25.8,
+          "dup": 12.9,
+          "drop": 6.5,
+          "halluc": 2.3,
+          "sub_boundary": 4.1
+        }
+      },
+      "eligible": false,
+      "gate": "FAIL"
+    },
+    "3.0": {
+      "n": 40,
+      "final": {
+        "latency_p50_ms": 516.9,
+        "latency_p95_ms": 720.2,
+        "latency_p99_ms": 767.4,
+        "latency_max_ms": 767.4,
+        "over_450": 29,
+        "inflight_wait_p50_ms": 168.3,
+        "inflight_wait_p95_ms": 340.1,
+        "compute_p50_ms": 352.1,
+        "compute_p95_ms": 443.6,
+        "tail_s_p50": 1.6,
+        "tail_s_p95": 2.6,
+        "decoded_s_p50": 4.3,
+        "decoded_s_p95": 5.3,
+        "by_duration": {
+          "le3s": {
+            "n": 7,
+            "p50_ms": 262.3,
+            "p95_ms": 410.1
+          },
+          "3to6s": {
+            "n": 13,
+            "p50_ms": 516.9,
+            "p95_ms": 699.6
+          },
+          "6to10s": {
+            "n": 13,
+            "p50_ms": 627.3,
+            "p95_ms": 745.9
+          },
+          "gt10s": {
+            "n": 7,
+            "p50_ms": 487.2,
+            "p95_ms": 767.4
+          }
+        }
+      },
+      "partials": {
+        "compute_p50_ms": 344.7,
+        "compute_p95_ms": 534.8
+      },
+      "quality": {
+        "wer_offline": 12.344,
+        "wer_final": 18.75,
+        "delta_pp": 6.4062,
+        "ci_pp": [
+          2.7285,
+          10.0604
+        ],
+        "sid_offline": [
+          43,
+          19,
+          17
+        ],
+        "sid_final": [
+          41,
+          47,
+          32
+        ],
+        "wer_en_offline_final": [
+          11.992,
+          19.923
+        ],
+        "wer_ru_offline_final": [
+          13.821,
+          13.821
+        ],
+        "identical_to_offline": 11,
+        "worse_utts": 16,
+        "better_utts": 3
+      },
+      "boundary": {
+        "cuts": 232,
+        "div": 72,
+        "div_boundary": 59,
+        "dup": 30,
+        "drop": 17,
+        "halluc": 3,
+        "sub_boundary": 9,
+        "per_100_cuts": {
+          "div": 31.0,
+          "div_boundary": 25.4,
+          "dup": 12.9,
+          "drop": 7.3,
+          "halluc": 1.3,
+          "sub_boundary": 3.9
+        }
+      },
+      "eligible": false,
+      "gate": "FAIL"
+    }
+  },
+  "retained": null,
+  "screen_decision": {
+    "0.0": "control",
+    "1.0": "eliminated: p95 748.3 ms > 500",
+    "2.0": "eliminated: p95 866.1 ms > 500",
+    "3.0": "eliminated: p95 720.2 ms > 500"
+  },
+  "t2d_commit_on_screen_ids": {
+    "n": 40,
+    "final": {
+      "latency_p50_ms": 190.0,
+      "latency_p95_ms": 443.2,
+      "latency_p99_ms": 816.3,
+      "latency_max_ms": 816.3,
+      "over_450": 2,
+      "inflight_wait_p50_ms": 6.4,
+      "inflight_wait_p95_ms": 151.5,
+      "compute_p50_ms": 168.4,
+      "compute_p95_ms": 268.7,
+      "tail_s_p50": 2.2,
+      "tail_s_p95": 3.7,
+      "decoded_s_p50": 2.2,
+      "decoded_s_p95": 3.7,
+      "by_duration": {
+        "le3s": {
+          "n": 7,
+          "p50_ms": 167.1,
+          "p95_ms": 257.8
+        },
+        "3to6s": {
+          "n": 13,
+          "p50_ms": 255.8,
+          "p95_ms": 410.3
+        },
+        "6to10s": {
+          "n": 13,
+          "p50_ms": 214.3,
+          "p95_ms": 576.2
+        },
+        "gt10s": {
+          "n": 7,
+          "p50_ms": 177.1,
+          "p95_ms": 816.3
+        }
+      }
+    },
+    "partials": {
+      "compute_p50_ms": 165.1,
+      "compute_p95_ms": 306.5
+    },
+    "quality": {
+      "wer_offline": 12.344,
+      "wer_final": 24.688,
+      "delta_pp": 12.3438,
+      "ci_pp": [
+        8.2643,
+        16.5585
+      ],
+      "sid_offline": [
+        43,
+        19,
+        17
+      ],
+      "sid_final": [
+        69,
+        42,
+        47
+      ],
+      "wer_en_offline_final": [
+        11.992,
+        23.985
+      ],
+      "wer_ru_offline_final": [
+        13.821,
+        27.642
+      ],
+      "identical_to_offline": 2,
+      "worse_utts": 28,
+      "better_utts": 3
+    },
+    "boundary": {
+      "cuts": 144,
+      "div": 131,
+      "div_boundary": 106,
+      "dup": 17,
+      "drop": 40,
+      "halluc": 12,
+      "sub_boundary": 37,
+      "per_100_cuts": {
+        "div": 91.0,
+        "div_boundary": 73.6,
+        "dup": 11.8,
+        "drop": 27.8,
+        "halluc": 8.3,
+        "sub_boundary": 25.7
+      }
+    },
+    "eligible": false,
+    "gate": "MARGINAL"
+  }
+}

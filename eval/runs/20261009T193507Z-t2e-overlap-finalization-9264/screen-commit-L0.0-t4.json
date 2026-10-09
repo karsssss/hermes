@@ -1,0 +1,58 @@
+{
+  "threads": 4,
+  "policy": "commit",
+  "hop_s": 0.5,
+  "right_context_s": 1.0,
+  "left_s": 0.0,
+  "n_ids": 40,
+  "gate": {
+    "metric": "release-to-final latency p95, all 160 utterances, push-to-talk release",
+    "pass_ms": 300.0,
+    "marginal_ms": 450.0,
+    "eligibility": "final WER vs offline full decode: CI lower bound <= 0 and point <= +0.5 pp"
+  },
+  "pid": 7204,
+  "qos": {
+    "qos": "high",
+    "applied": true,
+    "control_mask": 1,
+    "state_mask": 0,
+    "priority_class": "0x20"
+  },
+  "started_utc": "2026-10-09T19:35:24Z",
+  "memory_before_load": {
+    "working_set_mb": 51.7,
+    "peak_working_set_mb": 51.7,
+    "private_mb": 388.5
+  },
+  "load_ms": 4115.9,
+  "memory_after_load": {
+    "working_set_mb": 2232.5,
+    "peak_working_set_mb": 2252.4,
+    "private_mb": 2567.8
+  },
+  "warmup_ms": 1054.8,
+  "memory_after_decode": {
+    "working_set_mb": 2640.9,
+    "peak_working_set_mb": 2640.9,
+    "private_mb": 2722.4
+  },
+  "finished_utc": "2026-10-09T19:40:24Z",
+  "sessions": [
+    {
+      "tag": "screen-commit-L0.0-t4",
+      "policy": "commit",
+      "left_s": 0.0,
+      "threads": 4,
+      "qos": "high",
+      "started_utc": "2026-10-09T19:35:24Z",
+      "rows_present": 0,
+      "torn_bytes_dropped": 0,
+      "git": {
+        "sha": "8c22264a2b21c67917d18e8794ac8fa2d27cba28",
+        "dirty": true
+      },
+      "t2d_py_sha256": "a7cebe289d6676de31d5471425574349f040caf523b423bbf1bfafd588539687"
+    }
+  ]
+}

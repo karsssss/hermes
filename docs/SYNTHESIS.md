@@ -140,6 +140,11 @@ mechanical rewrite, whereas an FST toolchain migration does not.
   commit reaches 443 ms but doubles WER. "CPU EP always working" still holds as a fallback,
   not as a latency-compliant default. On Windows the CPU path **requires** opting the sidecar
   out of execution-speed throttling; without that it runs on the E-cores about 6× slower.
+  *Measured 2026-10-09 (Task 2e, D-0017):* bounded acoustic left overlap (1–3 s) does not
+  rescue commit: the best arm is still +5.0 pp WER [+1.3, +9.0]. The failure is independent tail
+  decoding plus timestamp stitching, so a commit-family path needs a cache-aware streaming
+  export, not more overlap. **Full redecode stays the finalization policy of record, and
+  execution-provider acceleration of it is the next experiment.**
 - **Model: decided in Phase 0 by measurement, not here.** *Corrected 2026-10-05 (D-0013).*
   This section originally named Nemotron Speech Streaming EN 0.6B @ 560 ms the leading
   hypothesis, on architecture and licensing alone. Task 2a measured all three candidates on
@@ -507,7 +512,10 @@ is easy to adopt casually and expensive to remove later.
    **Finalization latency is now measured and fails on the CPU EP** (Task 2d, D-0016): a
    full-utterance final redecode scales with utterance length (p95 1339 ms against a 450 ms
    allowance), and a context-free tail commit trades the latency for +13 pp WER. The blocker
-   is finalization architecture and acceleration, not model choice.
+   is finalization architecture and acceleration, not model choice. **Overlap-based commit is
+   ruled out** (Task 2e, D-0017): +5.0 to +7.8 pp WER at 1–3 s of left context. What remains
+   is acceleration of full redecode, with in-flight partial cancellation as a separate,
+   orthogonal lever; a cache-aware streaming export is the only route back to commit.
 7. **No Slavic-English code-switching corpus exists.** Re-verified 2026-09-27: CS-FLEURS'
    `cs_rus_eng`/`cs_ukr_eng` are concatenative TTS and CC BY-NC. We collect our own or W2 has
    a hole.
@@ -552,6 +560,8 @@ is easy to adopt casually and expensive to remove later.
 6. `ARCHITECTURE.md` §5.6 — WFST/Pynini ITN replaced with a rule cascade.
 7. §5 and §15 (2026-10-08, D-0016) — the CPU EP fails the pre-registered streaming gate for
    Parakeet FP32; HighQoS is required on the Windows CPU path.
+8. §5, §15 and C4 (2026-10-09, D-0017): overlap-based CPU finalization is ruled out; full
+   redecode is the finalization policy of record; `stable_prefix_len` is display-only.
 
 ## 18. Proposed contracts — NOT implemented
 
@@ -593,6 +603,9 @@ an action, and this field is how that rule is enforceable. Do not drop it as red
 per-token `confidence`. `stable_prefix_len` is the contract that makes UPWR/UPSR measurable and
 tells the HUD what it may stop re-rendering. **Must tolerate revision of already-emitted text** —
 beam-search biasing breaks the monotonic-prefix property, so this is not hypothetical.
+*Amended 2026-10-09 (D-0017):* `stable_prefix_len` is a **display** hint only. On the current
+offline export the final is a full redecode and must not be stitched from committed partial
+text. Task 2e showed that stitching independently decoded windows costs ≥ 5 pp WER.
 
 **C5 `FinalTranscript`** — `session_id`, `text`, `tokens[]` (`text`, `confidence`, `start_ms`,
 `end_ms`), `nbest[]` (hypothesis + score), `language`, `tier_used`, `model_id`, `stage_timings`.

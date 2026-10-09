@@ -445,14 +445,38 @@ def _cut_point(prev: list[Any], nxt: list[Any]) -> float:
     return round(min(nxt[1], max(mid, nxt[1] - 0.24)), 3)
 
 
-def stream_utterance(rec: Any, samples: Any, rate: int, policy: str) -> dict[str, Any]:
+def _decode_tail(
+    rec: Any, samples: Any, rate: int, seg0: float, end_s: float | None, left_s: float
+) -> tuple[list[list[Any]], float]:
+    """Words after the cut `seg0` in samples[:end_s], and where decoding started.
+
+    With `left_s` > 0 (Task 2e), decoding starts up to `left_s` before the cut so the tail
+    is heard with acoustic left context; words re-read from that overlap belong to the
+    committed text and are dropped. A word belongs to the tail iff its timestamp midpoint
+    is at or after the cut — the cut sits between two words (`_cut_point`), so this holds
+    under a one-frame onset shift. With `left_s` = 0 this is Task 2d's context-free tail.
+    """
+    end = len(samples) if end_s is None else int(end_s * rate)
+    lo = max(0.0, seg0 - left_s)
+    if end - int(seg0 * rate) < MIN_DECODE_S * rate:
+        return [], lo
+    words = _words(decode(rec, samples[int(lo * rate) : end], rate), lo)
+    if lo < seg0:
+        words = [w for w in words if (w[1] + w[2]) / 2.0 >= seg0]
+    return words, lo
+
+
+def stream_utterance(
+    rec: Any, samples: Any, rate: int, policy: str, left_s: float = 0.0
+) -> dict[str, Any]:
     """Replay one utterance in real time; the push-to-talk release is the end of the audio.
 
     `redecode`: every partial re-decodes everything heard so far; the final re-decodes the
     whole utterance after release. `commit`: LocalAgreement-2 — a word prefix that two
     consecutive partials agree on, and that has RIGHT_CONTEXT_S of audio after it, is
     committed, and its audio is cut at the word boundary sherpa's timestamps give; later
-    partials and the final decode only the uncommitted tail.
+    partials and the final decode only the uncommitted tail — re-reading `left_s` of
+    committed audio before it (Task 2e; 0 in Task 2d), see `_decode_tail`.
     """
     duration = len(samples) / rate
     committed: list[list[Any]] = []
@@ -473,9 +497,8 @@ def stream_utterance(rec: Any, samples: Any, rate: int, policy: str) -> dict[str
             time.sleep(min(next_due, duration) - now)
             continue
         avail = now
-        seg = samples[int(seg0 * rate) : int(avail * rate)]
         start = el()
-        hyp = _words(decode(rec, seg, rate), seg0) if len(seg) >= MIN_DECODE_S * rate else []
+        hyp, lo = _decode_tail(rec, samples, rate, seg0, avail, left_s)
         end = el()
         n_commit = 0
         if policy == "commit" and prev is not None:
@@ -493,6 +516,7 @@ def stream_utterance(rec: Any, samples: Any, rate: int, policy: str) -> dict[str
                 "ms": round((end - start) * 1000.0, 1),
                 "emit_s": round(end, 3),
                 "seg0": seg0,
+                "lo": lo,
                 "words": [[w[0], w[2]] for w in shown],
                 "committed": len(committed) + n_commit,
             }
@@ -507,8 +531,7 @@ def stream_utterance(rec: Any, samples: Any, rate: int, policy: str) -> dict[str
     final_start = el()
     if policy == "redecode":
         seg0, committed = 0.0, []
-    tail = samples[int(seg0 * rate) :]
-    tail_words = _words(decode(rec, tail, rate), seg0) if len(tail) >= MIN_DECODE_S * rate else []
+    tail_words, lo = _decode_tail(rec, samples, rate, seg0, None, left_s)
     final_end = el()
     words = committed + tail_words
     return {
@@ -521,6 +544,7 @@ def stream_utterance(rec: Any, samples: Any, rate: int, policy: str) -> dict[str
             "compute_ms": round((final_end - final_start) * 1000.0, 1),
             "latency_ms": round((final_end - duration) * 1000.0, 1),
             "tail_s": round(duration - seg0, 3),
+            "decoded_s": round(duration - lo, 3),
         },
     }
 
@@ -609,18 +633,33 @@ def _record_session(run_dir: Path, session: dict[str, Any]) -> list[dict[str, An
     return [*mine, session]
 
 
-def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -> None:
+def run_stream(
+    run_dir: Path,
+    threads: int,
+    policy: str,
+    qos: str = "default",
+    *,
+    left_s: float = 0.0,
+    only: Sequence[str] | None = None,
+    tag: str | None = None,
+) -> None:
     """Stream every manifest utterance not already in this policy's JSONL, appending.
 
     Resume-safe: each row is flushed and fsynced as it completes, completed ids are
     skipped, and each session is recorded in run.json (`stream_sessions`). The summary's
-    load, QoS and memory fields describe the last session.
+    load, QoS and memory fields describe the last session. Task 2e passes `left_s`, a
+    subset of ids (`only`, kept in manifest order) and its own `tag`.
     """
     from .asr_sherpa import _sha256, read_wav
 
-    tag = f"stream-{policy}-t{threads}"
+    tag = tag or f"stream-{policy}-t{threads}"
     path = run_dir / f"{tag}.jsonl"
     records = load_strict(MANIFEST).records
+    if only is not None:
+        keep = set(only)
+        records = [r for r in records if r.id in keep]
+        if len(records) != len(keep):
+            raise ValueError(f"{tag}: {len(keep) - len(records)} requested ids not in manifest")
     ids = [r.id for r in records]
     if _stream_complete(run_dir, tag, ids):
         print(f"[{tag}] complete, skipping", flush=True)
@@ -631,6 +670,7 @@ def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -
         {
             "tag": tag,
             "policy": policy,
+            "left_s": left_s,
             "threads": threads,
             "qos": qos,
             "started_utc": utc_now(),
@@ -646,6 +686,8 @@ def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -
         "policy": policy,
         "hop_s": HOP_S,
         "right_context_s": RIGHT_CONTEXT_S,
+        "left_s": left_s,
+        "n_ids": len(ids),
         "gate": GATE,
         "pid": os.getpid(),
         "qos": set_qos(qos),
@@ -659,7 +701,7 @@ def run_stream(run_dir: Path, threads: int, policy: str, qos: str = "default") -
                 continue
             samples, rate, _ = read_wav(record.audio)
             t_wall = time.time()
-            out = stream_utterance(rec, samples, rate, policy)
+            out = stream_utterance(rec, samples, rate, policy, left_s)
             row = {
                 "id": record.id,
                 "subset": record.metadata.get("subset"),
