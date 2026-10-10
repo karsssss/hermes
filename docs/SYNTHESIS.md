@@ -145,6 +145,14 @@ mechanical rewrite, whereas an FST toolchain migration does not.
   decoding plus timestamp stitching, so a commit-family path needs a cache-aware streaming
   export, not more overlap. **Full redecode stays the finalization policy of record, and
   execution-provider acceleration of it is the next experiment.**
+  *Vehicle chosen 2026-10-10 (Task 2f, D-0018):* that experiment runs the encoder on the
+  **DirectML EP**, from `onnxruntime-windowsml==1.28.0.202607272323`. That wheel is an ORT
+  1.28.0 + DirectML build matching the CPU baseline, used in isolation without the Windows ML
+  catalog. It is driven by direct ORT sessions and a lean owned TDT greedy loop that must first
+  match sherpa on the CPU. This is a **measurement choice, not the shipping provider**. On
+  NVIDIA, Windows ML offers only its "legacy" DirectML EP or TensorRT-RTX, and the long-term
+  DirectML-vs-Windows ML question (#14) stays open. Gate:
+  `docs/research/T2F-acceleration-plan.md`.
 - **Model: decided in Phase 0 by measurement, not here.** *Corrected 2026-10-05 (D-0013).*
   This section originally named Nemotron Speech Streaming EN 0.6B @ 560 ms the leading
   hypothesis, on architecture and licensing alone. Task 2a measured all three candidates on
@@ -176,7 +184,9 @@ The contract is kept unchanged. What was measured on the int8 sherpa-onnx export
 
 The scope is Parakeet only. Whisper large-v3-turbo, the retained fallback, was not tested and
 does not inherit this result. **DirectML vs WinML remains unresolved** (§5, open question
-#14): every Task 2b figure is CPU EP. The original risk statement follows, kept for the record.
+#14): every Task 2b figure is CPU EP. *(2026-10-10, D-0018: the instrumented greedy loop's
+325 / 741 ms p50 / p95 cost is why Task 2f requires a lean loop, validated against sherpa
+on CPU, before any GPU timing counts.)* The original risk statement follows, kept for the record.
 
 > The architecture requires `AsrResult` to carry **token-level confidences and an N-best
 > list**. R8 confirms NeMo's Python stack provides them. ~~It is unverified that an ONNX export
@@ -516,6 +526,7 @@ is easy to adopt casually and expensive to remove later.
    ruled out** (Task 2e, D-0017): +5.0 to +7.8 pp WER at 1–3 s of left context. What remains
    is acceleration of full redecode, with in-flight partial cancellation as a separate,
    orthogonal lever; a cache-aware streaming export is the only route back to commit.
+   The acceleration gate is pre-registered (Task 2f, D-0018) and not yet run.
 7. **No Slavic-English code-switching corpus exists.** Re-verified 2026-09-27: CS-FLEURS'
    `cs_rus_eng`/`cs_ukr_eng` are concatenative TTS and CC BY-NC. We collect our own or W2 has
    a hole.
@@ -562,6 +573,9 @@ is easy to adopt casually and expensive to remove later.
    Parakeet FP32; HighQoS is required on the Windows CPU path.
 8. §5, §15 and C4 (2026-10-09, D-0017): overlap-based CPU finalization is ruled out; full
    redecode is the finalization policy of record; `stable_prefix_len` is display-only.
+9. §5 and §15 (2026-10-10, D-0018): the acceleration experiment's vehicle is the DirectML EP via
+   an isolated `onnxruntime-windowsml` 1.28.0. That is a measurement choice; the shipping
+   provider (#14) stays open.
 
 ## 18. Proposed contracts — NOT implemented
 

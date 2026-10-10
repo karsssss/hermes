@@ -649,3 +649,81 @@ elimination rule were pre-registered in `hermes_eval.t2e`. Full write-up:
 - Whether a cache-aware streaming Parakeet export exists at FP32 quality is open and unmeasured.
 - DirectML/WinML remains unmeasured; nothing here says it passes.
 - All quality figures are proxy-set WER, not F-WER.
+
+---
+
+## D-0018 — Task 2f: test DirectML next as the controlled acceleration vehicle; shipping provider remains undecided
+
+**Status:** accepted · 2026-10-10 · **acts on D-0017** (acceleration of full `redecode` is next);
+**does not resolve open question #14** (D-0011's DirectML default stays under review)
+
+**Context.** D-0017 made execution-provider acceleration of full `redecode` the next
+experiment. Its target is Task 2d's final compute p95 863 ms plus in-flight wait p95 575 ms
+(release-to-final p95 1339 ms), against `t2d.GATE` (PASS ≤ 300 ms, MARGINAL ≤ 450 ms). Open
+question #14 named two candidates, Windows ML and the ONNX Runtime DirectML EP. Task 2f
+compared them against current Microsoft and ONNX Runtime documentation and the published
+wheels. Nothing was installed, changed or benchmarked. Full write-up and pre-registered gate:
+`docs/research/T2F-acceleration-plan.md`.
+
+**Decision.**
+
+- **TEST DIRECTML NEXT.** The next measured experiment runs Parakeet FP32's encoder on
+  `DmlExecutionProvider`.
+- **DirectML is selected as the measurement vehicle, not as the Hermes deployment
+  architecture.** The shipping provider remains undecided.
+- **The vehicle is `onnxruntime-windowsml==1.28.0.202607272323`** (cp311 win_amd64, sha256
+  `7303a7ef…d47e`), used only as an isolated ORT 1.28 + DirectML distribution:
+  - installed into a separate environment, **never into the normal `.venv`**;
+  - **no Windows ML catalog, Windows App SDK runtime or bootstrap**;
+  - **not the standalone `onnxruntime-directml` 1.24.4**.
+- **TensorRT-RTX (and CUDA) stay out of scope unless DirectML fails.**
+- **The experiment uses direct ORT sessions and a lean Hermes-owned TDT greedy loop**, with
+  greedy semantics unchanged. The encoder runs on DirectML; the decoder and joiner stay on the
+  CPU EP.
+- **Validity requirement: before any GPU speed result counts, the owned lean greedy path must
+  be validated independently on CPU against the frozen sherpa baseline** (Stage 0).
+- **Pre-registered in four stages**, each with early stops:
+  - **Stage 0:** lean loop on CPU. 160/160 step-identical to `TdtProbe.greedy`, ≥ 159/160 text
+    parity with sherpa, eligible WER, loop p95 ≤ 100 ms.
+  - **Stage 1:** provider and device validation. NVIDIA vendor 0x10DE selected explicitly, GPU
+    activity shown, loaded DLLs recorded, no compute-heavy node on the CPU.
+  - **Stage 2:** 40-row `records[1::4]` paired CPU-vs-DirectML screen. Stop if DirectML final
+    compute p95 > 300 ms, speedup < 2×, or quality is ineligible.
+  - **Stage 3:** full 160-row equivalence and streaming `redecode` under the unchanged
+    `t2d.GATE`. **In-flight cancellation is a separately reported variant** and never rescues
+    a provider that failed the screen.
+
+**Rationale.**
+
+- **On an RTX 4050, Windows ML adds no in-scope accelerator.** Microsoft's EP page (updated
+  2026-10-07) lists DirectML, marked "legacy", as Windows ML's only included GPU EP. Its only
+  catalog EP for NVIDIA is TensorRT-RTX.
+- **The DirectML code is the same in both wheels; only the ORT version differs.**
+  - `onnxruntime-windowsml` 1.28.0 reports `package_name='onnxruntime-directml'`,
+    `__version__='1.28.0'`, and bundles `DirectML.dll` 1.15.4.
+  - The standalone `onnxruntime-directml` wheel is frozen at 1.24.4 (2026-03-17) with the same
+    `DirectML.dll`.
+  - Only the former matches the CPU baseline's ORT 1.28.0, so CPU and GPU arms can share one
+    ORT build and differ only in the encoder's EP.
+- **sherpa cannot be used.** The prebuilt sherpa-onnx 1.13.8 wheel has DirectML compiled out
+  and falls back to CPU with only a log line.
+- **The owned loop is the semantic risk and must be cleared first.** `TdtProbe.greedy`
+  matches sherpa on 159/160 FP32 transcripts (D-0015). Its instrumented form costs 325 / 741 ms
+  p50 / p95 (Task 2b, non-decision-grade), which alone would fail the gate.
+- **The graphs should run on DirectML.** They are opset 17 (DirectML supports up to 20) and
+  use only standard ops. The risks are the dynamic time length, the int64 shape subgraph on
+  the CPU, adapter selection on a hybrid Intel + NVIDIA laptop, and an inbox
+  `System32\DirectML.dll` (1.15.5) that differs from the wheel's 1.15.4.
+
+**Consequences.**
+
+- The next engineering step is the Stage 0 lean loop and its CPU parity run. No GPU timing
+  counts before it passes.
+- A Stage 3 PASS or MARGINAL would show that the DirectML EP can meet the gate on this
+  machine. It would not choose DirectML for shipping. That still has to weigh DirectML's
+  sustained-engineering status against Windows ML's active trajectory (#14).
+- If Stage 1 or Stage 2 stops the task, the next candidate is TensorRT-RTX (via Windows ML or
+  directly), under its own pre-registration.
+- `tdt_probe` gains per-session providers, defaulting to CPU so existing callers are
+  unchanged. Sherpa stays the frozen CPU reference.
+- All quality figures remain proxy-set WER, not F-WER.

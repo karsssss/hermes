@@ -2,7 +2,7 @@
 
 The only doc expected to change every session. Read this first when resuming work.
 
-**Last updated:** 2026-10-09
+**Last updated:** 2026-10-10
 
 ## Where we are
 
@@ -87,6 +87,17 @@ than Task 2d on the same rows) and is not decision-grade; the verdict rests on q
 execution-provider acceleration of the full `redecode` final.** **Recorded as D-0017**;
 write-up `docs/research/T2E-finalization.md`. See **§ Task 2e** below.
 
+**Task 2f (acceleration path selection) — PROVIDER SELECTED, GATE PRE-REGISTERED, NOT RUN
+(2026-10-10).** **TEST DIRECTML NEXT**, as a *measurement vehicle*: the shipping provider stays
+undecided. On an RTX 4050, Windows ML adds no in-scope accelerator. Its only included GPU EP
+is DirectML ("legacy"), and its only NVIDIA catalog EP is TensorRT-RTX. The DirectML EP comes
+from `onnxruntime-windowsml==1.28.0.202607272323`, which is an ORT 1.28.0 + DirectML 1.15.4
+build, so it matches the CPU baseline's ORT version. It is used only as an isolated
+distribution, outside `.venv`. Standalone `onnxruntime-directml` is frozen at 1.24.4. sherpa's
+wheel cannot drive DirectML, so the experiment uses direct ORT sessions and a lean owned TDT
+greedy loop, which **must first pass CPU parity against sherpa** (Stage 0). **Recorded as
+D-0018**; plan and gate in `docs/research/T2F-acceleration-plan.md`. See **§ Task 2f** below.
+
 **No audio capture, no Rust.** That is deliberate and unchanged. There is now ASR, but only
 as a measurement harness: `src/hermes_eval/asr_sherpa.py` exists to score candidates, not to
 ship.
@@ -96,7 +107,7 @@ ship.
 1. `CLAUDE.md` — invariants and vocabulary
 2. **`docs/SYNTHESIS.md`** — the decision document; supersedes `ARCHITECTURE.md` where they
    disagree
-3. `docs/DECISIONS.md` — D-0001…D-0017
+3. `docs/DECISIONS.md` — D-0001…D-0018
 4. `docs/ROADMAP.md` — phases and checkpoints (Phase 1 scope is narrowed by SYNTHESIS §19)
 5. `docs/research/R1…R9` — evidence, only as needed
 
@@ -727,6 +738,44 @@ worker, the real-time streaming worker (`redecode` and LocalAgreement-2 `commit`
 latency fit, TTFP / useful-partial / UPWR / word-display lag / finalization decomposition,
 paired WER bootstrap vs offline). `tests/test_t2d.py` covers the streaming bookkeeping.
 
+## Task 2f — PROVIDER SELECTED: TEST DIRECTML NEXT; gate pre-registered, not run (2026-10-10)
+
+**The question.** Which execution provider carries D-0017's acceleration experiment: Windows
+ML or the ORT DirectML EP? **DirectML, as the measurement vehicle only** (D-0018). Nothing was
+installed, changed or benchmarked. The wheels were downloaded to scratch and inspected as zip
+archives.
+
+**Evidence, in short** (full detail in `docs/research/T2F-acceleration-plan.md` §2):
+
+- **Windows ML on NVIDIA means DirectML or TensorRT.** Its included EPs are CPU and DirectML
+  ("legacy"). Its only NVIDIA catalog EP is `NvTensorRtRtxExecutionProvider`, which is out of
+  scope unless DirectML fails.
+- **`onnxruntime-windowsml` 1.28.0.202607272323 is ORT 1.28.0 + DirectML 1.15.4.** It reports
+  `package_name='onnxruntime-directml'`, and `DmlExecutionProvider` is reachable without the
+  Windows ML catalog or app runtime.
+- **Standalone `onnxruntime-directml` is frozen at 1.24.4** (2026-03-17), with the same
+  `DirectML.dll`.
+- **sherpa 1.13.8's prebuilt wheel has DirectML compiled out**, and falls back to CPU with a
+  log line. So: direct ORT sessions plus the owned loop.
+- **The owned loop as instrumented costs 325 / 741 ms p50 / p95** (Task 2b). A lean
+  argmax-only loop is required, and it must be shown equivalent.
+- **The graphs** are opset 17 with standard ops only. The encoder has dynamic B and T, and
+  612 external initializers in a 2.44 GB `encoder.weights`.
+- **This machine** has an Intel UHD + RTX 4050 hybrid, so the NVIDIA adapter must be selected
+  explicitly. An inbox `System32\DirectML.dll` 1.15.5 sits alongside the wheel's 1.15.4.
+
+**Pre-registered stages** (all thresholds fixed in the plan §4; `t2d.GATE` unchanged):
+
+| stage | what | pass / early stop |
+|---|---|---|
+| 0 | lean greedy loop, direct ORT **CPU** EP, 160 rows | 160/160 step-identical to `TdtProbe.greedy`; **≥ 159/160** text parity with Task 2d sherpa offline; eligible WER; **loop p95 ≤ 100 ms**. Else stop, with no GPU timing |
+| 1 | provider and device validation | DirectML device with **vendor 0x10DE** selected explicitly; GPU activity shown; loaded `onnxruntime.dll` / `DirectML.dll` recorded; node placement and profiling. Stop if no NVIDIA device, any compute-heavy node on the CPU, or no GPU activity |
+| 2 | 40-row `records[1::4]` streaming `redecode`, arms C (CPU) and G (DirectML encoder), G C C G | **stop if G final-compute p95 > 300 ms, speedup < 2.0×**, or G ineligible against C after one `disable_metacommands` retry |
+| 3 | 160-row equivalence (G vs C ≥ 155/160, eligible) and 160-row streaming `redecode`, G C G | verdict on the first G session under `t2d.GATE`; second G session within 15%. **G+cancel** reported as a separate variant, never in place of G |
+
+**Next action for this track:** Stage 0. That means the lean loop, the result shim, per-session
+providers in `tdt_probe` (defaulting to CPU), and the isolated `.venv-t2f/` environment.
+
 ## Next steps — Phase 0
 
 Phase 0 is a **throwaway Python spike, ~1 week** (D-0006). Its purpose is no longer vague:
@@ -743,7 +792,9 @@ yet. **Task 2e (2026-10-09) closed lever (a) for acoustic overlap: CPU FINALIZAT
 RESCUED.** Bounded left overlap cannot hold offline WER (best +5.0 pp). The next experiment is
 **(b): execution-provider acceleration of the full `redecode` final**, with in-flight
 cancellation measured alongside, under its own pre-registered gate. A cache-aware export
-remains the only commit-family route left. Task 1b below still needs a human with a
+remains the only commit-family route left. **Task 2f (2026-10-10, D-0018) chose the vehicle and
+pre-registered that gate: DirectML via `onnxruntime-windowsml` 1.28.0, isolated, in stages
+0–3.** The next step is Stage 0, the lean-loop CPU parity check (§ Task 2f). Task 1b below still needs a human with a
 microphone and is independent of this.
 
 ### THE NEXT ACTION — record the personal eval set (Task 1b)
@@ -863,6 +914,8 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
    Code-switched speech and the user's own voice remain unmeasured — Task 1b.
 3. **CUDA/cuDNN redistribution** — needs a direct EULA read before any CUDA-in-installer work.
    DirectML is the default until then — but see #14: DirectML's own status has changed.
+   *2026-10-10 (D-0018):* TensorRT-RTX, CUDA's nearest relative here, stays out of scope
+   unless DirectML fails Task 2f.
 4. **universal-ctags is GPL-2.0-or-later** — legal read before bundling the binary. Subprocess
    invocation differs from linking, but that is not a question to settle by inference.
 5. **espeak-ng / `phonemizer` are GPL-3.0**, and `phonemizer` loads `libespeak-ng` via ctypes
@@ -904,6 +957,12 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
     **Raised in priority 2026-10-08 (Task 2d, D-0016):** the CPU EP fails the streaming gate
     for Parakeet FP32, so acceleration is now one of the two levers against the finalization
     blocker. Still unmeasured.
+    **Narrowed 2026-10-10 (Task 2f, D-0018), not closed.** For the *next experiment*, DirectML
+    is the vehicle. Windows ML's GPU options on NVIDIA are its "legacy" included DirectML EP or
+    TensorRT-RTX, and `onnxruntime-windowsml` 1.28.0 supplies the same DirectML EP at the
+    baseline's ORT version. The int8 concern no longer applies, because Parakeet is FP32
+    (D-0015). The *shipping* choice is still open: DirectML is in sustained engineering, while
+    Windows ML (and TensorRT-RTX within it) is where Microsoft's development has gone.
 15. **Does any candidate reach the 700 ms p95 budget on this hardware at all?** Now measured
     for all three: Parakeet p95 5707 ms, Whisper 22343 ms, Nemotron 40029 ms, on the CPU EP
     at 4 threads, whole-utterance decode. The budget assumes streaming decode overlapped with
@@ -957,6 +1016,7 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
 - **D-0015** Task 2c: Parakeet ships as the FP32 export; INT8 is the low-memory fallback
 - **D-0016** Task 2d: Parakeet FP32 fails the CPU streaming gate; 4 threads frozen, HighQoS required
 - **D-0017** Task 2e: overlap-based CPU finalization ruled out; accelerate full redecode next
+- **D-0018** Task 2f: test DirectML next as the controlled acceleration vehicle; shipping provider undecided
 
 ## Standing instructions
 
@@ -996,6 +1056,10 @@ Settled since the last update: **#10 (Pynini/OpenFst on Windows) — closed by D
   run `eval/runs/20261009T193507Z-t2e-overlap-finalization-9264` (`run.json`,
   `screen-commit-L{0,1,2,3}.0-t4.{json,jsonl}`, `counters-screen.jsonl`, `analysis.json`).
   Collected at `8c22264` dirty (Task 2e code then uncommitted, committed unchanged).
+- **Task 2f provider selection is committed** (`phase0: select DirectML acceleration
+  experiment`): D-0018, `docs/research/T2F-acceleration-plan.md` with the pre-registered
+  stages, this section, and the SYNTHESIS / open-question #14 notes. It is documentation
+  only: no code, no run, no package installed.
 - **Task 2a runs:** `run.json` + `predictions.jsonl` are committed for
   `eval/runs/20260927T022919Z-t2a-parakeet-tdt-v3-aff8`,
   `eval/runs/20260927T031249Z-t2a-nemotron-stream-en-560ms-c9f4` and
